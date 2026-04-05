@@ -135,6 +135,9 @@ docker-compose restart netbox
 
 ## Configuration
 
+> 📘 **Looking for the UI Configuration Guide?**
+> If you want to learn how to configure the plugin's Name Transformations, SSIDs, and Regex Site Name Rules from within the NetBox Web UI, **[please read the fully illustrated Configuration Guide here!](CONFIGURATION.md)**
+
 Edit your NetBox `configuration.py` file (located at `/opt/netbox/netbox/netbox/configuration.py`):
 
 ```python
