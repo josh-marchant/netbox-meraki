@@ -1,6 +1,15 @@
 """Admin configuration for NetBox Meraki plugin"""
 from django.contrib import admin
-from .models import SyncLog, PluginSettings, SiteNameRule, PrefixFilterRule, SyncReview, ReviewItem
+from .models import (
+    MerakiBinding,
+    MerakiVLANResolutionRule,
+    PluginSettings,
+    PrefixFilterRule,
+    ReviewItem,
+    SiteNameRule,
+    SyncLog,
+    SyncReview,
+)
 
 
 @admin.register(SyncLog)
@@ -123,6 +132,34 @@ class PrefixFilterRuleAdmin(admin.ModelAdmin):
     )
 
 
+@admin.register(MerakiVLANResolutionRule)
+class MerakiVLANResolutionRuleAdmin(admin.ModelAdmin):
+    list_display = [
+        'name',
+        'priority',
+        'enabled',
+        'meraki_organization_id',
+        'meraki_network_id',
+        'site',
+        'vlan_group',
+    ]
+    list_filter = ['enabled', 'site', 'vlan_group']
+    list_editable = ['enabled', 'priority']
+    ordering = ['priority', 'name']
+    search_fields = ['name', 'meraki_organization_id', 'meraki_network_id', 'description']
+    fieldsets = (
+        (None, {
+            'fields': ('name', 'enabled', 'priority')
+        }),
+        ('Match Criteria', {
+            'fields': ('meraki_organization_id', 'meraki_network_id', 'site')
+        }),
+        ('Resolution Target', {
+            'fields': ('vlan_group', 'description')
+        }),
+    )
+
+
 @admin.register(SyncReview)
 class SyncReviewAdmin(admin.ModelAdmin):
     list_display = [
@@ -166,5 +203,35 @@ class ReviewItemAdmin(admin.ModelAdmin):
     ]
     search_fields = ['object_name']
     
+    def has_add_permission(self, request):
+        return False
+
+
+@admin.register(MerakiBinding)
+class MerakiBindingAdmin(admin.ModelAdmin):
+    list_display = [
+        'binding_kind',
+        'meraki_identifier',
+        'meraki_network_id',
+        'meraki_serial',
+        'last_seen_sync',
+        'updated',
+    ]
+    list_filter = ['binding_kind', 'updated']
+    readonly_fields = [
+        'binding_kind',
+        'object_type',
+        'object_id',
+        'meraki_identifier',
+        'meraki_organization_id',
+        'meraki_network_id',
+        'meraki_serial',
+        'meraki_ssid_number',
+        'last_seen_sync',
+        'created',
+        'updated',
+    ]
+    search_fields = ['meraki_identifier', 'meraki_network_id', 'meraki_serial']
+
     def has_add_permission(self, request):
         return False

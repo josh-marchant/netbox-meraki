@@ -1,0 +1,10 @@
+{% extends 'netbox_meraki/base.html' %}
+
+{% block meraki_content %}
+<h1>Delete VLAN Resolution Rule</h1>
+<form method="post">
+    {% csrf_token %}
+    <p>Are you sure you want to delete {{ object }}?</p>
+    <button class="btn btn-danger" type="submit">Delete</button>
+</form>
+{% endblock %}

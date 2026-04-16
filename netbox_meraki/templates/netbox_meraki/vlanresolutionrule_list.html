@@ -3,10 +3,10 @@
 {% block meraki_content %}
 <div class="d-flex justify-content-between align-items-center mb-3">
     <div>
-        <h1 class="mb-1">Prefix Filter Rules</h1>
-        <p class="text-muted mb-0">Control which Meraki prefixes are included or excluded during sync.</p>
+        <h1 class="mb-1">VLAN Resolution Rules</h1>
+        <p class="text-muted mb-0">Map Meraki organizations, networks, or sites to the VLAN group used during sync.</p>
     </div>
-    <a class="btn btn-primary" href="{% url 'plugins:netbox_meraki:prefixfilterrule_add' %}">Add Rule</a>
+    <a class="btn btn-primary" href="{% url 'plugins:netbox_meraki:vlanresolutionrule_add' %}">Add Rule</a>
 </div>
 
 <div class="card">
@@ -15,9 +15,10 @@
             <thead>
                 <tr>
                     <th>Name</th>
-                    <th>Type</th>
-                    <th>Prefix Pattern</th>
-                    <th>Length Filter</th>
+                    <th>Meraki Organization</th>
+                    <th>Meraki Network</th>
+                    <th>Site</th>
+                    <th>VLAN Group</th>
                     <th>Priority</th>
                     <th>Status</th>
                     <th>Description</th>
@@ -28,25 +29,22 @@
                 {% for object in objects %}
                     <tr>
                         <td class="fw-semibold">{{ object.name }}</td>
-                        <td>{{ object.get_filter_type_display }}</td>
                         <td>
-                            {% if object.prefix_pattern %}
-                                <code>{{ object.prefix_pattern }}</code>
+                            {% if object.meraki_organization_id %}
+                                <code>{{ object.meraki_organization_id }}</code>
                             {% else %}
                                 <span class="text-muted">Any</span>
                             {% endif %}
                         </td>
                         <td>
-                            {{ object.get_prefix_length_filter_display }}
-                            {% if object.min_prefix_length is not None or object.max_prefix_length is not None %}
-                                <span class="text-muted">
-                                    (
-                                    {% if object.min_prefix_length is not None %}{{ object.min_prefix_length }}{% else %}-{% endif %}
-                                    {% if object.max_prefix_length is not None %} to {{ object.max_prefix_length }}{% endif %}
-                                    )
-                                </span>
+                            {% if object.meraki_network_id %}
+                                <code>{{ object.meraki_network_id }}</code>
+                            {% else %}
+                                <span class="text-muted">Any</span>
                             {% endif %}
                         </td>
+                        <td>{{ object.site|default:"Any" }}</td>
+                        <td>{{ object.vlan_group }}</td>
                         <td>{{ object.priority }}</td>
                         <td>
                             {% if object.enabled %}
@@ -57,13 +55,13 @@
                         </td>
                         <td class="text-muted">{{ object.description|default:"-" }}</td>
                         <td class="text-end">
-                            <a class="btn btn-sm btn-outline-primary" href="{% url 'plugins:netbox_meraki:prefixfilterrule_edit' pk=object.pk %}">Edit</a>
-                            <a class="btn btn-sm btn-outline-danger" href="{% url 'plugins:netbox_meraki:prefixfilterrule_delete' pk=object.pk %}">Delete</a>
+                            <a class="btn btn-sm btn-outline-primary" href="{% url 'plugins:netbox_meraki:vlanresolutionrule_edit' pk=object.pk %}">Edit</a>
+                            <a class="btn btn-sm btn-outline-danger" href="{% url 'plugins:netbox_meraki:vlanresolutionrule_delete' pk=object.pk %}">Delete</a>
                         </td>
                     </tr>
                 {% empty %}
                     <tr>
-                        <td colspan="8" class="text-center text-muted py-4">No prefix filter rules defined.</td>
+                        <td colspan="9" class="text-center text-muted py-4">No VLAN resolution rules defined.</td>
                     </tr>
                 {% endfor %}
             </tbody>

@@ -1,0 +1,118 @@
+{% extends 'netbox_meraki/base.html' %}
+
+{% block meraki_content %}
+<h1>VLAN Resolution Rule</h1>
+<form method="post" id="vlan-rule-form">
+    {% csrf_token %}
+    <div class="mb-3">
+        <label class="form-label" for="{{ form.name.id_for_label }}">Name</label>
+        {{ form.name }}
+        {% if form.name.errors %}<div class="text-danger">{{ form.name.errors }}</div>{% endif %}
+    </div>
+    <div class="mb-3">
+        <label class="form-label" for="meraki_organization_id">Meraki Organization</label>
+        {{ form.meraki_organization_id }}
+        {% if form.meraki_organization_id.errors %}<div class="text-danger">{{ form.meraki_organization_id.errors }}</div>{% endif %}
+    </div>
+    <div class="mb-3">
+        <label class="form-label" for="meraki_network_id">Meraki Network</label>
+        {{ form.meraki_network_id }}
+        {% if form.meraki_network_id.errors %}<div class="text-danger">{{ form.meraki_network_id.errors }}</div>{% endif %}
+    </div>
+    <div class="mb-3">
+        <label class="form-label" for="{{ form.site.id_for_label }}">Site</label>
+        {{ form.site }}
+        {% if form.site.errors %}<div class="text-danger">{{ form.site.errors }}</div>{% endif %}
+    </div>
+    <div class="mb-3">
+        <label class="form-label" for="{{ form.vlan_group.id_for_label }}">VLAN Group</label>
+        {{ form.vlan_group }}
+        {% if form.vlan_group.errors %}<div class="text-danger">{{ form.vlan_group.errors }}</div>{% endif %}
+    </div>
+    <div class="mb-3">
+        <label class="form-label" for="{{ form.priority.id_for_label }}">Priority</label>
+        {{ form.priority }}
+        {% if form.priority.errors %}<div class="text-danger">{{ form.priority.errors }}</div>{% endif %}
+    </div>
+    <div class="form-check mb-3">
+        {{ form.enabled }}
+        <label class="form-check-label" for="{{ form.enabled.id_for_label }}">Enabled</label>
+        {% if form.enabled.errors %}<div class="text-danger">{{ form.enabled.errors }}</div>{% endif %}
+    </div>
+    <div class="mb-3">
+        <label class="form-label" for="{{ form.description.id_for_label }}">Description</label>
+        {{ form.description }}
+        {% if form.description.errors %}<div class="text-danger">{{ form.description.errors }}</div>{% endif %}
+    </div>
+    {% if form.non_field_errors %}<div class="text-danger mb-3">{{ form.non_field_errors }}</div>{% endif %}
+    <button class="btn btn-primary" type="submit">Save</button>
+</form>
+
+<script>
+(function () {
+    const organizationSelect = document.getElementById('meraki_organization_id');
+    const networkSelect = document.getElementById('meraki_network_id');
+    if (!organizationSelect || !networkSelect) {
+        return;
+    }
+    const initialNetworkValue = networkSelect.value;
+
+    function setNetworkChoices(options, placeholder, disabled) {
+        networkSelect.replaceChildren();
+        const placeholderOption = document.createElement('option');
+        placeholderOption.value = '';
+        placeholderOption.textContent = placeholder;
+        networkSelect.appendChild(placeholderOption);
+
+        options.forEach((network) => {
+            const option = document.createElement('option');
+            option.value = String(network.id);
+            option.textContent = network.name || String(network.id);
+            if (option.value === initialNetworkValue) {
+                option.selected = true;
+            }
+            networkSelect.appendChild(option);
+        });
+        networkSelect.disabled = disabled;
+    }
+
+    async function loadNetworks() {
+        if (!organizationSelect.value) {
+            setNetworkChoices([], 'Select an organization first', true);
+            return;
+        }
+        try {
+            const response = await fetch(`{% url 'plugins:netbox_meraki:get_networks' org_id='ORG_ID' %}`.replace('ORG_ID', organizationSelect.value));
+            const payload = await response.json();
+            if (!response.ok) {
+                setNetworkChoices([], payload.detail || 'Unable to load networks right now', true);
+                return;
+            }
+            const networks = payload.networks || [];
+            if (!networks.length) {
+                setNetworkChoices([], 'No networks available for this organization', false);
+                return;
+            }
+            setNetworkChoices(networks, 'Any Network', false);
+        } catch (error) {
+            setNetworkChoices([], 'Unable to load networks right now', true);
+        }
+    }
+
+    organizationSelect.addEventListener('change', () => {
+        if (networkSelect.value && networkSelect.value !== initialNetworkValue) {
+            networkSelect.value = '';
+        }
+        loadNetworks();
+    });
+
+    if (!organizationSelect.value) {
+        if (!networkSelect.value) {
+            networkSelect.disabled = true;
+        }
+    } else if (networkSelect.options.length <= 1) {
+        loadNetworks();
+    }
+})();
+</script>
+{% endblock %}

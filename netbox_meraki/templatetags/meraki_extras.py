@@ -1,4 +1,6 @@
 # Template tags for NetBox Meraki plugin
+import json
+
 from django import template
 
 register = template.Library()
@@ -15,3 +17,14 @@ def lookup(dictionary, key):
     if isinstance(dictionary, dict):
         return dictionary.get(key, '')
     return ''
+
+
+@register.filter
+def json_pretty(value):
+    """
+    Render Python objects as pretty JSON for readable review/debug displays.
+    """
+    try:
+        return json.dumps(value, indent=2, sort_keys=True, default=str)
+    except TypeError:
+        return str(value)

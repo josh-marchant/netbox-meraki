@@ -1,578 +1,263 @@
 {% extends 'netbox_meraki/base.html' %}
-{% load static %}
 
-{% block page_content %}
-<div class="row">
-    <div class="col-md-12">
-        <h1>Meraki Plugin Configuration</h1>
+{% block meraki_content %}
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4">
+    <div>
+        <h1 class="mb-1">Configuration</h1>
+        <p class="text-muted mb-0">Manage sync defaults, naming rules, and operational safeguards for the Meraki plugin.</p>
+    </div>
+    <button class="btn btn-primary" type="submit" form="plugin-config-form">Save Changes</button>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-md-4">
+        <div class="card h-100">
+            <div class="card-body">
+                <h2 class="h5 card-title mb-1">Site Name Rules</h2>
+                <p class="text-muted mb-3">{{ site_rule_count }} configured</p>
+                <a class="btn btn-outline-primary btn-sm" href="{% url 'plugins:netbox_meraki:sitenamerule_list' %}">Manage Rules</a>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card h-100">
+            <div class="card-body">
+                <h2 class="h5 card-title mb-1">Prefix Filter Rules</h2>
+                <p class="text-muted mb-3">{{ prefix_filter_count }} configured</p>
+                <a class="btn btn-outline-primary btn-sm" href="{% url 'plugins:netbox_meraki:prefixfilterrule_list' %}">Manage Rules</a>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card h-100">
+            <div class="card-body">
+                <h2 class="h5 card-title mb-1">VLAN Resolution Rules</h2>
+                <p class="text-muted mb-3">{{ vlan_rule_count }} configured</p>
+                <a class="btn btn-outline-primary btn-sm" href="{% url 'plugins:netbox_meraki:vlanresolutionrule_list' %}">Manage Rules</a>
+            </div>
+        </div>
     </div>
 </div>
 
-<div class="row mt-4">
-    <div class="col-md-12">
-        <!-- Single form wrapping all tabs -->
-        <form method="post">
-            {% csrf_token %}
-            
-            <ul class="nav nav-tabs" role="tablist">
-                <li class="nav-item">
-                    <a class="nav-link active" data-bs-toggle="tab" href="#device-roles" role="tab">Device Role Mappings</a>
-                </li>
-                <li class="nav-item">
-                    <a class="nav-link" data-bs-toggle="tab" href="#name-transforms" role="tab">Name Transformations</a>
-                </li>
-                <li class="nav-item">
-                    <a class="nav-link" data-bs-toggle="tab" href="#tags" role="tab">Tag Configuration</a>
-                </li>
-                <li class="nav-item">
-                    <a class="nav-link" data-bs-toggle="tab" href="#api-performance" role="tab">API Performance</a>
-                </li>
-                <li class="nav-item">
-                    <a class="nav-link" data-bs-toggle="tab" href="#site-rules" role="tab">Site Name Rules</a>
-                </li>
-                <li class="nav-item">
-                    <a class="nav-link" data-bs-toggle="tab" href="#prefix-filters" role="tab">Prefix Filters</a>
-                </li>
-                <li class="nav-item">
-                    <a class="nav-link" data-bs-toggle="tab" href="#static-config" role="tab">Static Configuration</a>
-                </li>
-            </ul>
-            
-            <!-- Note: sync_mode, sync_interval_minutes, scheduled_sync_mode, and enable_scheduled_sync 
-                 are handled in the view to preserve their existing values -->
-            
-            <div class="tab-content mt-3">
-                <!-- Device Role Mappings Tab -->
-                <div class="tab-pane fade show active" id="device-roles" role="tabpanel">
-                    <div class="card">
-                        <div class="card-header">
-                            <strong>Device Role Mappings</strong>
-                        </div>
-                        <div class="card-body">
-                            <p class="text-muted">Configure which NetBox device role to use for each Meraki product type.</p>
-                            <div class="row">
-                                <div class="col-md-6">
-                                    <div class="mb-3">
-                                        <label for="{{ form.mx_device_role.id_for_label }}" class="form-label">
-                                            <strong>MX Device Role</strong> <small class="text-muted">(Security Appliances)</small>
-                                        </label>
-                                        {{ form.mx_device_role }}
-                                        <small class="form-text text-muted">{{ form.mx_device_role.help_text }}</small>
-                                    </div>
-                                    
-                                    <div class="mb-3">
-                                        <label for="{{ form.ms_device_role.id_for_label }}" class="form-label">
-                                            <strong>MS Device Role</strong> <small class="text-muted">(Switches)</small>
-                                        </label>
-                                        {{ form.ms_device_role }}
-                                        <small class="form-text text-muted">{{ form.ms_device_role.help_text }}</small>
-                                    </div>
-                                    
-                                    <div class="mb-3">
-                                        <label for="{{ form.mr_device_role.id_for_label }}" class="form-label">
-                                            <strong>MR Device Role</strong> <small class="text-muted">(Wireless APs)</small>
-                                        </label>
-                                        {{ form.mr_device_role }}
-                                        <small class="form-text text-muted">{{ form.mr_device_role.help_text }}</small>
-                                    </div>
-                                    
-                                    <div class="mb-3">
-                                        <label for="{{ form.mg_device_role.id_for_label }}" class="form-label">
-                                            <strong>MG Device Role</strong> <small class="text-muted">(Cellular Gateways)</small>
-                                        </label>
-                                        {{ form.mg_device_role }}
-                                        <small class="form-text text-muted">{{ form.mg_device_role.help_text }}</small>
-                                    </div>
-                                </div>
-                                
-                                <div class="col-md-6">
-                                    <div class="mb-3">
-                                        <label for="{{ form.mv_device_role.id_for_label }}" class="form-label">
-                                            <strong>MV Device Role</strong> <small class="text-muted">(Cameras)</small>
-                                        </label>
-                                        {{ form.mv_device_role }}
-                                        <small class="form-text text-muted">{{ form.mv_device_role.help_text }}</small>
-                                    </div>
-                                    
-                                    <div class="mb-3">
-                                        <label for="{{ form.mt_device_role.id_for_label }}" class="form-label">
-                                            <strong>MT Device Role</strong> <small class="text-muted">(Sensors)</small>
-                                        </label>
-                                        {{ form.mt_device_role }}
-                                        <small class="form-text text-muted">{{ form.mt_device_role.help_text }}</small>
-                                    </div>
-                                    
-                                    <div class="mb-3">
-                                        <label for="{{ form.default_device_role.id_for_label }}" class="form-label">
-                                            <strong>Default Device Role</strong> <small class="text-muted">(Unknown Types)</small>
-                                        </label>
-                                        {{ form.default_device_role }}
-                                        <small class="form-text text-muted">{{ form.default_device_role.help_text }}</small>
-                                    </div>
-                                    
-                                    <div class="mb-3">
-                                        <div class="form-check">
-                                            {{ form.auto_create_device_roles }}
-                                            <label class="form-check-label" for="{{ form.auto_create_device_roles.id_for_label }}">
-                                                Auto-create device roles if they don't exist
-                                            </label>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                    </div>
-                </div>
-            </div>
-            
-            <!-- Name Transformations Tab -->
-            <div class="tab-pane fade" id="name-transforms" role="tabpanel">
-                <div class="card">
-                    <div class="card-header">
-                        <strong>Name Transformation Settings</strong>
-                    </div>
-                    <div class="card-body">
-                        <p class="text-muted">Control how names are transformed when syncing from Meraki Dashboard.</p>
-                            
-                            <div class="row">
-                                <div class="col-md-6">
-                                    <div class="mb-3">
-                                        <label for="{{ form.device_name_transform.id_for_label }}" class="form-label">
-                                            <strong>Device Names</strong>
-                                        </label>
-                                        {{ form.device_name_transform }}
-                                        <small class="form-text text-muted">{{ form.device_name_transform.help_text }}</small>
-                                        <div class="mt-1 text-muted" style="font-size: 0.875rem;">
-                                            <strong>Examples:</strong><br>
-                                            Keep Original: <code>Switch-Floor1</code><br>
-                                            UPPERCASE: <code>SWITCH-FLOOR1</code><br>
-                                            lowercase: <code>switch-floor1</code><br>
-                                            Title Case: <code>Switch-Floor1</code>
-                                        </div>
-                                    </div>
-                                    
-                                    <div class="mb-3">
-                                        <label for="{{ form.site_name_transform.id_for_label }}" class="form-label">
-                                            <strong>Site/Network Names</strong>
-                                        </label>
-                                        {{ form.site_name_transform }}
-                                        <small class="form-text text-muted">{{ form.site_name_transform.help_text }}</small>
-                                        <div class="mt-1 text-muted" style="font-size: 0.875rem;">
-                                            <strong>Examples:</strong><br>
-                                            Keep Original: <code>New York Office</code><br>
-                                            UPPERCASE: <code>NEW YORK OFFICE</code><br>
-                                            lowercase: <code>new york office</code><br>
-                                            Title Case: <code>New York Office</code>
-                                        </div>
-                                    </div>
-                                    
-                                    <div class="mb-3">
-                                        <div class="form-check">
-                                            {{ form.process_unmatched_sites }}
-                                            <label class="form-check-label" for="{{ form.process_unmatched_sites.id_for_label }}">
-                                                {{ form.process_unmatched_sites.label }}
-                                            </label>
-                                        </div>
-                                        <small class="form-text text-muted">{{ form.process_unmatched_sites.help_text }}</small>
-                                    </div>
-                                </div>
-                                
-                                <div class="col-md-6">
-                                    <div class="mb-3">
-                                        <label for="{{ form.vlan_name_transform.id_for_label }}" class="form-label">
-                                            <strong>VLAN Names</strong>
-                                        </label>
-                                        {{ form.vlan_name_transform }}
-                                        <small class="form-text text-muted">{{ form.vlan_name_transform.help_text }}</small>
-                                        <div class="mt-1 text-muted" style="font-size: 0.875rem;">
-                                            <strong>Examples:</strong><br>
-                                            Keep Original: <code>Management</code><br>
-                                            UPPERCASE: <code>MANAGEMENT</code><br>
-                                            lowercase: <code>management</code><br>
-                                            Title Case: <code>Management</code>
-                                        </div>
-                                    </div>
-                                    
-                                    <div class="mb-3">
-                                        <label for="{{ form.ssid_name_transform.id_for_label }}" class="form-label">
-                                            <strong>SSID Names</strong>
-                                        </label>
-                                        {{ form.ssid_name_transform }}
-                                        <small class="form-text text-muted">{{ form.ssid_name_transform.help_text }}</small>
-                                        <div class="mt-1 text-muted" style="font-size: 0.875rem;">
-                                            <strong>Examples:</strong><br>
-                                            Keep Original: <code>Guest-WiFi</code><br>
-                                            UPPERCASE: <code>GUEST-WIFI</code><br>
-                                            lowercase: <code>guest-wifi</code><br>
-                                            Title Case: <code>Guest-Wifi</code>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                            
-                            <div class="alert alert-info">
-                                <i class="mdi mdi-information"></i> <strong>Note:</strong> 
-                                Name transformations are applied during sync. Existing objects won't be renamed automatically.
-                                Site name transformations are applied after regex rules.
-                            </div>
-                    </div>
-                </div>
-            </div>
-            
-            <!-- Tag Configuration Tab -->
-            <div class="tab-pane fade" id="tags" role="tabpanel">
-                <div class="card">
-                    <div class="card-header">
-                        <strong>Tag Configuration</strong>
-                    </div>
-                    <div class="card-body">
-                        <p class="text-muted">Configure tags to be automatically applied to synced objects. Use comma-separated values for multiple tags.</p>
-                            
-                            <div class="row">
-                                <div class="col-md-6">
-                                    <div class="mb-3">
-                                        <label for="{{ form.site_tags.id_for_label }}" class="form-label">
-                                            <strong>Site Tags</strong>
-                                        </label>
-                                        {{ form.site_tags }}
-                                        <small class="form-text text-muted">{{ form.site_tags.help_text }}</small>
-                                        <div class="mt-1 text-muted" style="font-size: 0.875rem;">
-                                            <strong>Example:</strong> <code>Meraki,Production</code>
-                                        </div>
-                                    </div>
-                                    
-                                    <div class="mb-3">
-                                        <label for="{{ form.device_tags.id_for_label }}" class="form-label">
-                                            <strong>Device Tags</strong>
-                                        </label>
-                                        {{ form.device_tags }}
-                                        <small class="form-text text-muted">{{ form.device_tags.help_text }}</small>
-                                        <div class="mt-1 text-muted" style="font-size: 0.875rem;">
-                                            <strong>Example:</strong> <code>Meraki,Network-Device</code>
-                                        </div>
-                                    </div>
-                                </div>
-                                
-                                <div class="col-md-6">
-                                    <div class="mb-3">
-                                        <label for="{{ form.vlan_tags.id_for_label }}" class="form-label">
-                                            <strong>VLAN Tags</strong>
-                                        </label>
-                                        {{ form.vlan_tags }}
-                                        <small class="form-text text-muted">{{ form.vlan_tags.help_text }}</small>
-                                        <div class="mt-1 text-muted" style="font-size: 0.875rem;">
-                                            <strong>Example:</strong> <code>Meraki,VLAN</code>
-                                        </div>
-                                    </div>
-                                    
-                                    <div class="mb-3">
-                                        <label for="{{ form.prefix_tags.id_for_label }}" class="form-label">
-                                            <strong>Prefix/Subnet Tags</strong>
-                                        </label>
-                                        {{ form.prefix_tags }}
-                                        <small class="form-text text-muted">{{ form.prefix_tags.help_text }}</small>
-                                        <div class="mt-1 text-muted" style="font-size: 0.875rem;">
-                                            <strong>Example:</strong> <code>Meraki,Subnet</code>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                            
-                            <div class="alert alert-info">
-                                <i class="mdi mdi-information"></i> <strong>Note:</strong> 
-                                Tags will be automatically created if they don't exist. Multiple tags can be specified using comma-separated values. 
-                                Changes will apply to newly synced objects and when existing objects are updated during sync.
-                            </div>
-                    </div>
-                </div>
-            </div>
-            
-            <!-- API Performance Tab -->
-            <div class="tab-pane fade" id="api-performance" role="tabpanel">
-                <div class="card">
-                    <div class="card-header">
-                        <strong>API Performance Settings</strong>
-                    </div>
-                    <div class="card-body">
-                        <p class="text-muted">Configure Meraki Dashboard API performance and rate limiting options.</p>
-                            
-                            <div class="row">
-                                <div class="col-md-6">
-                                    <div class="mb-4">
-                                        <div class="form-check form-switch">
-                                            {{ form.enable_api_throttling }}
-                                            <label class="form-check-label" for="{{ form.enable_api_throttling.id_for_label }}">
-                                                <strong>Enable API Throttling</strong>
-                                            </label>
-                                        </div>
-                                        <small class="form-text text-muted">{{ form.enable_api_throttling.help_text }}</small>
-                                    </div>
-                                    
-                                    <div class="mb-3">
-                                        <label for="{{ form.api_requests_per_second.id_for_label }}" class="form-label">
-                                            <strong>API Requests Per Second</strong>
-                                        </label>
-                                        {{ form.api_requests_per_second }}
-                                        <small class="form-text text-muted">{{ form.api_requests_per_second.help_text }}</small>
-                                    </div>
-                                </div>
-                                
-                                <div class="col-md-6">
-                                    <div class="mb-4">
-                                        <div class="form-check form-switch">
-                                            {{ form.enable_multithreading }}
-                                            <label class="form-check-label" for="{{ form.enable_multithreading.id_for_label }}">
-                                                <strong>Enable Multithreading</strong>
-                                            </label>
-                                        </div>
-                                        <small class="form-text text-muted">{{ form.enable_multithreading.help_text }}</small>
-                                    </div>
-                                    
-                                    <div class="mb-3">
-                                        <label for="{{ form.max_worker_threads.id_for_label }}" class="form-label">
-                                            <strong>Max Worker Threads</strong>
-                                        </label>
-                                        {{ form.max_worker_threads }}
-                                        <small class="form-text text-muted">{{ form.max_worker_threads.help_text }}</small>
-                                    </div>
-                                </div>
-                            </div>
-                            
-                            <div class="alert alert-info">
-                                <i class="mdi mdi-information"></i> <strong>About API Performance:</strong>
-                                <ul class="mb-0">
-                                    <li><strong>API Throttling:</strong> Rate limits requests to avoid hitting Meraki Dashboard API limits (10 requests/second). Recommended to keep enabled.</li>
-                                    <li><strong>Multithreading:</strong> Fetches data from multiple networks concurrently for faster syncs. May increase API usage.</li>
-                                    <li><strong>Recommended Settings:</strong> Throttling ON with 5 req/sec, Multithreading OFF for safe operation.</li>
-                                    <li><strong>High-Performance:</strong> Throttling OFF, Multithreading ON with 3-5 threads for fastest sync (may hit rate limits).</li>
-                                </ul>
-                            </div>
-                            
-                            <div class="alert alert-warning">
-                                <i class="mdi mdi-alert"></i> <strong>Warning:</strong> 
-                                Disabling throttling or using too many threads may cause API rate limit errors from Meraki Dashboard. 
-                                Test changes with dry-run mode first.
-                            </div>
-                    </div>
-                </div>
-            </div>
-            
-            <!-- Site Name Rules Tab -->
-            <div class="tab-pane fade" id="site-rules" role="tabpanel">
-                <div class="card">
-                    <div class="card-header d-flex justify-content-between align-items-center">
-                        <strong>Site Name Transformation Rules</strong>
-                        <a href="{% url 'plugins:netbox_meraki:sitenamerule_add' %}" class="btn btn-sm btn-success">
-                            <i class="mdi mdi-plus"></i> Add Rule
-                        </a>
-                    </div>
-                    <div class="card-body">
-                        <p class="text-muted">
-                            Define rules to transform Meraki network names into NetBox site names using regular expressions.
-                            Rules are evaluated in priority order (lower numbers first).
-                        </p>
-                        
-                        {% if site_rules %}
-                            <table class="table table-hover">
-                                <thead>
-                                    <tr>
-                                        <th>Priority</th>
-                                        <th>Name</th>
-                                        <th>Pattern</th>
-                                        <th>Template</th>
-                                        <th>Status</th>
-                                        <th>Actions</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {% for rule in site_rules %}
-                                        <tr>
-                                            <td>{{ rule.priority }}</td>
-                                            <td><strong>{{ rule.name }}</strong></td>
-                                            <td><code>{{ rule.regex_pattern }}</code></td>
-                                            <td><code>{{ rule.site_name_template }}</code></td>
-                                            <td>
-                                                {% if rule.enabled %}
-                                                    <span class="badge bg-success">Enabled</span>
-                                                {% else %}
-                                                    <span class="badge bg-secondary">Disabled</span>
-                                                {% endif %}
-                                            </td>
-                                            <td>
-                                                <a href="{% url 'plugins:netbox_meraki:sitenamerule_edit' pk=rule.pk %}" class="btn btn-sm btn-warning">Edit</a>
-                                                <a href="{% url 'plugins:netbox_meraki:sitenamerule_delete' pk=rule.pk %}" class="btn btn-sm btn-danger">Delete</a>
-                                            </td>
-                                        </tr>
-                                    {% endfor %}
-                                </tbody>
-                            </table>
-                        {% else %}
-                            <div class="alert alert-info">
-                                No site name rules configured. Network names will be used as-is for site names.
-                            </div>
-                        {% endif %}
-                        
-                        <div class="alert alert-secondary mt-3">
-                            <strong>Example:</strong>
-                            <ul class="mb-0">
-                                <li><strong>Pattern:</strong> <code>^asia-south-(.+)-oil$</code></li>
-                                <li><strong>Template:</strong> <code>Asia South - {0} - Oil</code></li>
-                                <li><strong>Input:</strong> asia-south-mumbai-oil</li>
-                                <li><strong>Output:</strong> Asia South - mumbai - Oil</li>
-                            </ul>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            
-            <!-- Prefix Filter Rules Tab -->
-            <div class="tab-pane fade" id="prefix-filters" role="tabpanel">
-                <div class="card">
-                    <div class="card-header d-flex justify-content-between align-items-center">
-                        <strong>Prefix Filter Rules</strong>
-                        <a href="{% url 'plugins:netbox_meraki:prefixfilterrule_add' %}" class="btn btn-sm btn-success">
-                            <i class="mdi mdi-plus"></i> Add Filter Rule
-                        </a>
-                    </div>
-                    <div class="card-body">
-                        <p class="text-muted">
-                            Define rules to filter which prefixes are synced from Meraki to NetBox.
-                            Use these rules to exclude conflicting prefixes or include only specific ranges.
-                            Rules are evaluated in priority order (lower numbers first).
-                        </p>
-                        
-                        {% if prefix_filter_rules %}
-                            <table class="table table-hover">
-                                <thead>
-                                    <tr>
-                                        <th>Priority</th>
-                                        <th>Name</th>
-                                        <th>Type</th>
-                                        <th>Pattern</th>
-                                        <th>Length Filter</th>
-                                        <th>Status</th>
-                                        <th>Actions</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {% for rule in prefix_filter_rules %}
-                                        <tr>
-                                            <td>{{ rule.priority }}</td>
-                                            <td><strong>{{ rule.name }}</strong></td>
-                                            <td>
-                                                {% if rule.filter_type == 'exclude' %}
-                                                    <span class="badge bg-danger">Exclude</span>
-                                                {% else %}
-                                                    <span class="badge bg-success">Include Only</span>
-                                                {% endif %}
-                                            </td>
-                                            <td>
-                                                {% if rule.prefix_pattern %}
-                                                    <code>{{ rule.prefix_pattern }}</code>
-                                                {% else %}
-                                                    <em>All prefixes</em>
-                                                {% endif %}
-                                            </td>
-                                            <td>
-                                                {{ rule.get_prefix_length_filter_display }}
-                                                {% if rule.min_prefix_length %}
-                                                    ({{ rule.min_prefix_length }}
-                                                    {% if rule.max_prefix_length and rule.prefix_length_filter == 'range' %}
-                                                        - {{ rule.max_prefix_length }}
-                                                    {% endif %}
-                                                    )
-                                                {% endif %}
-                                            </td>
-                                            <td>
-                                                {% if rule.enabled %}
-                                                    <span class="badge bg-success">Enabled</span>
-                                                {% else %}
-                                                    <span class="badge bg-secondary">Disabled</span>
-                                                {% endif %}
-                                            </td>
-                                            <td>
-                                                <a href="{% url 'plugins:netbox_meraki:prefixfilterrule_edit' pk=rule.pk %}" class="btn btn-sm btn-warning">Edit</a>
-                                                <a href="{% url 'plugins:netbox_meraki:prefixfilterrule_delete' pk=rule.pk %}" class="btn btn-sm btn-danger">Delete</a>
-                                            </td>
-                                        </tr>
-                                    {% endfor %}
-                                </tbody>
-                            </table>
-                        {% else %}
-                            <div class="alert alert-info">
-                                No prefix filter rules configured. All prefixes will be synced.
-                            </div>
-                        {% endif %}
-                        
-                        <div class="alert alert-secondary mt-3">
-                            <strong>Examples:</strong>
-                            <ul class="mb-0">
-                                <li><strong>Exclude /32 host routes:</strong> Filter Type: Exclude, Length Filter: Exact, Min Length: 32</li>
-                                <li><strong>Include only /24 subnets:</strong> Filter Type: Include Only, Length Filter: Exact, Min Length: 24</li>
-                                <li><strong>Exclude 192.168.0.0/16 range:</strong> Filter Type: Exclude, Pattern: 192.168.0.0/16</li>
-                                <li><strong>Include prefixes >= /20:</strong> Filter Type: Include Only, Length Filter: Greater, Min Length: 20</li>
-                            </ul>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            
-            <!-- Static Configuration Tab -->
-            <div class="tab-pane fade" id="static-config" role="tabpanel">
-                <div class="card">
-                    <div class="card-header">
-                        <strong>Static Plugin Configuration</strong>
-                    </div>
-                    <div class="card-body">
-                        <div class="alert alert-info">
-                            <strong>Note:</strong> These settings are read from NetBox's configuration file and cannot be changed here.
-                            Edit your <code>configuration.py</code> or environment variables to change these settings.
-                        </div>
+<form method="post" id="plugin-config-form">
+    {% csrf_token %}
 
-                        <table class="table table-striped">
-                            <tbody>
-                                {% for key, value in static_config.items %}
-                                    <tr>
-                                        <th style="width: 40%;">{{ key }}</th>
-                                        <td>
-                                            {% if value is None %}
-                                                <span class="text-muted">Not set</span>
-                                            {% elif value == True %}
-                                                <span class="badge bg-success">Enabled</span>
-                                            {% elif value == False %}
-                                                <span class="badge bg-secondary">Disabled</span>
-                                            {% else %}
-                                                <code>{{ value }}</code>
-                                            {% endif %}
-                                        </td>
-                                    </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
+    {% if form.non_field_errors %}
+    <div class="alert alert-danger">
+        {{ form.non_field_errors }}
+    </div>
+    {% endif %}
+
+    <div class="card mb-4">
+        <div class="card-header">
+            <h2 class="h5 mb-0">Connection</h2>
+        </div>
+        <div class="card-body">
+            <p class="text-muted">Store the Meraki API connection details used by sync and lookup features.</p>
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label class="form-label" for="{{ form.meraki_base_url.id_for_label }}">{{ form.meraki_base_url.label }}</label>
+                    {{ form.meraki_base_url }}
+                    {% if form.meraki_base_url.help_text %}<div class="form-text">{{ form.meraki_base_url.help_text }}</div>{% endif %}
+                    {% if form.meraki_base_url.errors %}<div class="text-danger mt-1">{{ form.meraki_base_url.errors }}</div>{% endif %}
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label" for="{{ form.meraki_api_key.id_for_label }}">{{ form.meraki_api_key.label }}</label>
+                    {{ form.meraki_api_key }}
+                    <div class="form-text">
+                        {% if form.instance.has_meraki_api_key %}
+                        API key stored. Enter a new value to replace it.
+                        {% else %}
+                        No API key stored yet.
+                        {% endif %}
                     </div>
+                    {% if form.meraki_api_key.help_text %}<div class="form-text">{{ form.meraki_api_key.help_text }}</div>{% endif %}
+                    {% if form.meraki_api_key.errors %}<div class="text-danger mt-1">{{ form.meraki_api_key.errors }}</div>{% endif %}
+                </div>
+            </div>
+            <div class="form-check mt-3">
+                {{ form.clear_api_key }}
+                <label class="form-check-label" for="{{ form.clear_api_key.id_for_label }}">{{ form.clear_api_key.label }}</label>
+                {% if form.clear_api_key.help_text %}<div class="form-text">{{ form.clear_api_key.help_text }}</div>{% endif %}
+                {% if form.clear_api_key.errors %}<div class="text-danger mt-1">{{ form.clear_api_key.errors }}</div>{% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="card mb-4">
+        <div class="card-header">
+            <h2 class="h5 mb-0">Device Role Mapping</h2>
+        </div>
+        <div class="card-body">
+            <p class="text-muted">Choose which NetBox device roles should be used for each Meraki product family.</p>
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label class="form-label" for="{{ form.mx_device_role.id_for_label }}">{{ form.mx_device_role.label }}</label>
+                    {{ form.mx_device_role }}
+                    {% if form.mx_device_role.help_text %}<div class="form-text">{{ form.mx_device_role.help_text }}</div>{% endif %}
+                    {% if form.mx_device_role.errors %}<div class="text-danger mt-1">{{ form.mx_device_role.errors }}</div>{% endif %}
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label" for="{{ form.ms_device_role.id_for_label }}">{{ form.ms_device_role.label }}</label>
+                    {{ form.ms_device_role }}
+                    {% if form.ms_device_role.help_text %}<div class="form-text">{{ form.ms_device_role.help_text }}</div>{% endif %}
+                    {% if form.ms_device_role.errors %}<div class="text-danger mt-1">{{ form.ms_device_role.errors }}</div>{% endif %}
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label" for="{{ form.mr_device_role.id_for_label }}">{{ form.mr_device_role.label }}</label>
+                    {{ form.mr_device_role }}
+                    {% if form.mr_device_role.help_text %}<div class="form-text">{{ form.mr_device_role.help_text }}</div>{% endif %}
+                    {% if form.mr_device_role.errors %}<div class="text-danger mt-1">{{ form.mr_device_role.errors }}</div>{% endif %}
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label" for="{{ form.mg_device_role.id_for_label }}">{{ form.mg_device_role.label }}</label>
+                    {{ form.mg_device_role }}
+                    {% if form.mg_device_role.help_text %}<div class="form-text">{{ form.mg_device_role.help_text }}</div>{% endif %}
+                    {% if form.mg_device_role.errors %}<div class="text-danger mt-1">{{ form.mg_device_role.errors }}</div>{% endif %}
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label" for="{{ form.mv_device_role.id_for_label }}">{{ form.mv_device_role.label }}</label>
+                    {{ form.mv_device_role }}
+                    {% if form.mv_device_role.help_text %}<div class="form-text">{{ form.mv_device_role.help_text }}</div>{% endif %}
+                    {% if form.mv_device_role.errors %}<div class="text-danger mt-1">{{ form.mv_device_role.errors }}</div>{% endif %}
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label" for="{{ form.mt_device_role.id_for_label }}">{{ form.mt_device_role.label }}</label>
+                    {{ form.mt_device_role }}
+                    {% if form.mt_device_role.help_text %}<div class="form-text">{{ form.mt_device_role.help_text }}</div>{% endif %}
+                    {% if form.mt_device_role.errors %}<div class="text-danger mt-1">{{ form.mt_device_role.errors }}</div>{% endif %}
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label" for="{{ form.default_device_role.id_for_label }}">{{ form.default_device_role.label }}</label>
+                    {{ form.default_device_role }}
+                    {% if form.default_device_role.help_text %}<div class="form-text">{{ form.default_device_role.help_text }}</div>{% endif %}
+                    {% if form.default_device_role.errors %}<div class="text-danger mt-1">{{ form.default_device_role.errors }}</div>{% endif %}
+                </div>
+            </div>
+            <div class="form-check mt-3">
+                {{ form.auto_create_device_roles }}
+                <label class="form-check-label" for="{{ form.auto_create_device_roles.id_for_label }}">{{ form.auto_create_device_roles.label }}</label>
+                {% if form.auto_create_device_roles.help_text %}<div class="form-text">{{ form.auto_create_device_roles.help_text }}</div>{% endif %}
+                {% if form.auto_create_device_roles.errors %}<div class="text-danger mt-1">{{ form.auto_create_device_roles.errors }}</div>{% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="card mb-4">
+        <div class="card-header">
+            <h2 class="h5 mb-0">Sync Defaults</h2>
+        </div>
+        <div class="card-body">
+            <p class="text-muted">Set the default sync behavior and how names should be transformed during sync.</p>
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <label class="form-label" for="{{ form.sync_mode.id_for_label }}">{{ form.sync_mode.label }}</label>
+                    {{ form.sync_mode }}
+                    {% if form.sync_mode.help_text %}<div class="form-text">{{ form.sync_mode.help_text }}</div>{% endif %}
+                    {% if form.sync_mode.errors %}<div class="text-danger mt-1">{{ form.sync_mode.errors }}</div>{% endif %}
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label" for="{{ form.device_name_transform.id_for_label }}">{{ form.device_name_transform.label }}</label>
+                    {{ form.device_name_transform }}
+                    {% if form.device_name_transform.help_text %}<div class="form-text">{{ form.device_name_transform.help_text }}</div>{% endif %}
+                    {% if form.device_name_transform.errors %}<div class="text-danger mt-1">{{ form.device_name_transform.errors }}</div>{% endif %}
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label" for="{{ form.site_name_transform.id_for_label }}">{{ form.site_name_transform.label }}</label>
+                    {{ form.site_name_transform }}
+                    {% if form.site_name_transform.help_text %}<div class="form-text">{{ form.site_name_transform.help_text }}</div>{% endif %}
+                    {% if form.site_name_transform.errors %}<div class="text-danger mt-1">{{ form.site_name_transform.errors }}</div>{% endif %}
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label" for="{{ form.vlan_name_transform.id_for_label }}">{{ form.vlan_name_transform.label }}</label>
+                    {{ form.vlan_name_transform }}
+                    {% if form.vlan_name_transform.help_text %}<div class="form-text">{{ form.vlan_name_transform.help_text }}</div>{% endif %}
+                    {% if form.vlan_name_transform.errors %}<div class="text-danger mt-1">{{ form.vlan_name_transform.errors }}</div>{% endif %}
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label" for="{{ form.ssid_name_transform.id_for_label }}">{{ form.ssid_name_transform.label }}</label>
+                    {{ form.ssid_name_transform }}
+                    {% if form.ssid_name_transform.help_text %}<div class="form-text">{{ form.ssid_name_transform.help_text }}</div>{% endif %}
+                    {% if form.ssid_name_transform.errors %}<div class="text-danger mt-1">{{ form.ssid_name_transform.errors }}</div>{% endif %}
                 </div>
             </div>
         </div>
-        
-        <!-- Single Save Button for All Settings -->
-        <div class="row mt-4">
-            <div class="col-md-12">
-                <div class="d-grid gap-2">
-                    <button type="submit" class="btn btn-primary btn-lg">
-                        <i class="mdi mdi-content-save"></i> Save All Settings
-                    </button>
+    </div>
+
+    <div class="card mb-4">
+        <div class="card-header">
+            <h2 class="h5 mb-0">Tags</h2>
+        </div>
+        <div class="card-body">
+            <p class="text-muted">Optional comma-separated tags to apply automatically to synced objects.</p>
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label class="form-label" for="{{ form.site_tags.id_for_label }}">{{ form.site_tags.label }}</label>
+                    {{ form.site_tags }}
+                    {% if form.site_tags.help_text %}<div class="form-text">{{ form.site_tags.help_text }}</div>{% endif %}
+                    {% if form.site_tags.errors %}<div class="text-danger mt-1">{{ form.site_tags.errors }}</div>{% endif %}
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label" for="{{ form.device_tags.id_for_label }}">{{ form.device_tags.label }}</label>
+                    {{ form.device_tags }}
+                    {% if form.device_tags.help_text %}<div class="form-text">{{ form.device_tags.help_text }}</div>{% endif %}
+                    {% if form.device_tags.errors %}<div class="text-danger mt-1">{{ form.device_tags.errors }}</div>{% endif %}
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label" for="{{ form.vlan_tags.id_for_label }}">{{ form.vlan_tags.label }}</label>
+                    {{ form.vlan_tags }}
+                    {% if form.vlan_tags.help_text %}<div class="form-text">{{ form.vlan_tags.help_text }}</div>{% endif %}
+                    {% if form.vlan_tags.errors %}<div class="text-danger mt-1">{{ form.vlan_tags.errors }}</div>{% endif %}
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label" for="{{ form.prefix_tags.id_for_label }}">{{ form.prefix_tags.label }}</label>
+                    {{ form.prefix_tags }}
+                    {% if form.prefix_tags.help_text %}<div class="form-text">{{ form.prefix_tags.help_text }}</div>{% endif %}
+                    {% if form.prefix_tags.errors %}<div class="text-danger mt-1">{{ form.prefix_tags.errors }}</div>{% endif %}
                 </div>
             </div>
         </div>
-        
-        </form> <!-- End of single form wrapping all tabs -->
     </div>
-</div>
 
-<div class="row mt-4">
-    <div class="col-md-12">
-        <a href="{% url 'plugins:netbox_meraki:dashboard' %}" class="btn btn-secondary">
-            Back to Dashboard
-        </a>
+    <div class="card mb-4">
+        <div class="card-header">
+            <h2 class="h5 mb-0">Safety And Processing</h2>
+        </div>
+        <div class="card-body">
+            <p class="text-muted">Control how unmatched sites, API throttling, and cleanup should behave.</p>
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <label class="form-label" for="{{ form.api_requests_per_second.id_for_label }}">{{ form.api_requests_per_second.label }}</label>
+                    {{ form.api_requests_per_second }}
+                    {% if form.api_requests_per_second.help_text %}<div class="form-text">{{ form.api_requests_per_second.help_text }}</div>{% endif %}
+                    {% if form.api_requests_per_second.errors %}<div class="text-danger mt-1">{{ form.api_requests_per_second.errors }}</div>{% endif %}
+                </div>
+            </div>
+            <div class="mt-3 d-grid gap-3">
+                <div class="form-check">
+                    {{ form.process_unmatched_sites }}
+                    <label class="form-check-label" for="{{ form.process_unmatched_sites.id_for_label }}">{{ form.process_unmatched_sites.label }}</label>
+                    {% if form.process_unmatched_sites.help_text %}<div class="form-text">{{ form.process_unmatched_sites.help_text }}</div>{% endif %}
+                    {% if form.process_unmatched_sites.errors %}<div class="text-danger mt-1">{{ form.process_unmatched_sites.errors }}</div>{% endif %}
+                </div>
+                <div class="form-check">
+                    {{ form.enable_api_throttling }}
+                    <label class="form-check-label" for="{{ form.enable_api_throttling.id_for_label }}">{{ form.enable_api_throttling.label }}</label>
+                    {% if form.enable_api_throttling.help_text %}<div class="form-text">{{ form.enable_api_throttling.help_text }}</div>{% endif %}
+                    {% if form.enable_api_throttling.errors %}<div class="text-danger mt-1">{{ form.enable_api_throttling.errors }}</div>{% endif %}
+                </div>
+                <div class="form-check">
+                    {{ form.enable_cleanup }}
+                    <label class="form-check-label" for="{{ form.enable_cleanup.id_for_label }}">{{ form.enable_cleanup.label }}</label>
+                    {% if form.enable_cleanup.help_text %}<div class="form-text">{{ form.enable_cleanup.help_text }}</div>{% endif %}
+                    {% if form.enable_cleanup.errors %}<div class="text-danger mt-1">{{ form.enable_cleanup.errors }}</div>{% endif %}
+                </div>
+            </div>
+        </div>
     </div>
-</div>
+
+    <div class="d-flex justify-content-end">
+        <button class="btn btn-primary" type="submit">Save Changes</button>
+    </div>
+</form>
 {% endblock %}

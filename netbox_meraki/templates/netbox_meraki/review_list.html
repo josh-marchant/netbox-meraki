@@ -1,112 +1,180 @@
 {% extends 'netbox_meraki/base.html' %}
-{% load static %}
 
-{% block page_content %}
-<div class="row">
-    <div class="col-md-12">
-        <h1>Sync Reviews</h1>
-        <nav aria-label="breadcrumb">
-            <ol class="breadcrumb">
-                <li class="breadcrumb-item"><a href="{% url 'plugins:netbox_meraki:dashboard' %}">Dashboard</a></li>
-                <li class="breadcrumb-item active">Reviews</li>
-            </ol>
-        </nav>
+{% block meraki_content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+        <h1 class="mb-1">Reviews</h1>
+        <p class="text-muted mb-0">Inspect staged Meraki changes, approve or reject them, and apply approved items.</p>
     </div>
 </div>
 
-<div class="row mt-4">
-    <div class="col-md-12">
-        <div class="card">
-            <div class="card-header">
-                <strong>All Sync Reviews</strong>
-            </div>
-            <div class="card-body">
-                {% if reviews %}
-                <div class="table-responsive">
-                    <table class="table table-striped table-hover">
-                        <thead>
-                            <tr>
-                                <th>ID</th>
-                                <th>Created</th>
-                                <th>Status</th>
-                                <th>Total Items</th>
-                                <th>Approved</th>
-                                <th>Rejected</th>
-                                <th>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for review in reviews %}
-                            <tr>
-                                <td><strong>#{{ review.pk }}</strong></td>
-                                <td>{{ review.created }}</td>
-                                <td>
-                                    {% if review.status == 'pending' %}
-                                        <span class="badge bg-warning">{{ review.status|upper }}</span>
-                                    {% elif review.status == 'approved' %}
-                                        <span class="badge bg-success">{{ review.status|upper }}</span>
-                                    {% elif review.status == 'rejected' %}
-                                        <span class="badge bg-danger">{{ review.status|upper }}</span>
-                                    {% elif review.status == 'partially_approved' %}
-                                        <span class="badge bg-info">PARTIALLY APPROVED</span>
-                                    {% elif review.status == 'applied' %}
-                                        <span class="badge bg-primary">{{ review.status|upper }}</span>
-                                    {% endif %}
-                                </td>
-                                <td>{{ review.items_total }}</td>
-                                <td><span class="badge bg-success">{{ review.items_approved }}</span></td>
-                                <td><span class="badge bg-danger">{{ review.items_rejected }}</span></td>
-                                <td>
-                                    <a href="{% url 'plugins:netbox_meraki:review_detail' pk=review.pk %}" class="btn btn-sm btn-primary">
-                                        <i class="mdi mdi-eye"></i> View
-                                    </a>
-                                </td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
-                
-                {% if is_paginated %}
-                <nav aria-label="Page navigation">
-                    <ul class="pagination">
-                        {% if page_obj.has_previous %}
-                        <li class="page-item">
-                            <a class="page-link" href="?page=1">First</a>
-                        </li>
-                        <li class="page-item">
-                            <a class="page-link" href="?page={{ page_obj.previous_page_number }}">Previous</a>
-                        </li>
-                        {% endif %}
-                        
-                        <li class="page-item active">
-                            <span class="page-link">Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span>
-                        </li>
-                        
-                        {% if page_obj.has_next %}
-                        <li class="page-item">
-                            <a class="page-link" href="?page={{ page_obj.next_page_number }}">Next</a>
-                        </li>
-                        <li class="page-item">
-                            <a class="page-link" href="?page={{ page_obj.paginator.num_pages }}">Last</a>
-                        </li>
-                        {% endif %}
-                    </ul>
-                </nav>
-                {% endif %}
-                {% else %}
-                <p class="text-muted">No sync reviews found.</p>
-                {% endif %}
-            </div>
+{% if perms.netbox_meraki.review_sync and reviews %}
+<form id="bulk-clear-form" method="post" action="{% url 'plugins:netbox_meraki:review_bulk_clear' %}" onsubmit="return confirm('Clear the selected reviews? Their staged review items will be deleted, but the related sync logs will be kept.');">
+    {% csrf_token %}
+</form>
+<div class="card mb-3">
+    <div class="card-body d-flex justify-content-between align-items-center flex-wrap gap-3 py-3">
+        <div>
+            <div class="fw-semibold">Bulk Cleanup</div>
+            <div class="text-muted small">Clear stale reviews in one go. Their sync logs will remain available in history.</div>
         </div>
+        <button class="btn btn-outline-danger" type="submit" form="bulk-clear-form">Clear Selected Reviews</button>
     </div>
 </div>
 
-<div class="row mt-4">
-    <div class="col-md-12">
-        <a href="{% url 'plugins:netbox_meraki:dashboard' %}" class="btn btn-secondary">
-            <i class="mdi mdi-arrow-left"></i> Back to Dashboard
-        </a>
+<div class="card">
+    <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+            <thead>
+                <tr>
+                    <th style="width: 1%;">
+                        <input class="form-check-input" type="checkbox" data-check-all aria-label="Select all reviews">
+                    </th>
+                    <th>Review</th>
+                    <th>Sync Log</th>
+                    <th>Status</th>
+                    <th>Counts</th>
+                    <th>Created</th>
+                    <th>Reviewed</th>
+                    <th class="text-end">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for review in reviews %}
+                    <tr>
+                        <td>
+                            <input class="form-check-input" type="checkbox" name="review_ids" value="{{ review.pk }}" aria-label="Select review {{ review.pk }}" form="bulk-clear-form">
+                        </td>
+                        <td class="fw-semibold">Review #{{ review.pk }}</td>
+                        <td>
+                            <a href="{{ review.sync_log.get_absolute_url }}">Sync #{{ review.sync_log_id }}</a>
+                            <div class="text-muted small">Clearing the review keeps this log.</div>
+                        </td>
+                        <td>
+                            {% if review.status == "pending" %}
+                                <span class="badge text-bg-warning">Pending</span>
+                            {% elif review.status == "approved" %}
+                                <span class="badge text-bg-success">Approved</span>
+                            {% elif review.status == "partially_approved" %}
+                                <span class="badge text-bg-info">Partially Approved</span>
+                            {% elif review.status == "rejected" %}
+                                <span class="badge text-bg-danger">Rejected</span>
+                            {% elif review.status == "applied" %}
+                                <span class="badge text-bg-primary">Applied</span>
+                            {% else %}
+                                <span class="badge text-bg-secondary">{{ review.status }}</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-muted">
+                            <div>Total: {{ review.items_total }}</div>
+                            <div>Approved: {{ review.items_approved }} | Rejected: {{ review.items_rejected }}</div>
+                        </td>
+                        <td>{{ review.created }}</td>
+                        <td>
+                            {% if review.reviewed %}
+                                <div>{{ review.reviewed }}</div>
+                                <div class="text-muted small">{{ review.reviewed_by|default:"system" }}</div>
+                            {% else %}
+                                <span class="text-muted">Not yet reviewed</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-end">
+                            <div class="d-flex justify-content-end gap-2 flex-wrap">
+                                <a class="btn btn-sm btn-outline-primary" href="{% url 'plugins:netbox_meraki:review_detail' pk=review.pk %}">Open Review</a>
+                                <form method="post" action="{% url 'plugins:netbox_meraki:review_clear' pk=review.pk %}" onsubmit="return confirm('Clear review #{{ review.pk }}? Its staged review items will be deleted, but sync #{{ review.sync_log_id }} will remain.');">
+                                    {% csrf_token %}
+                                    <button class="btn btn-sm btn-outline-danger" type="submit">Clear</button>
+                                </form>
+                            </div>
+                        </td>
+                    </tr>
+                {% empty %}
+                    <tr>
+                        <td colspan="8" class="text-center text-muted py-4">No reviews available.</td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
     </div>
 </div>
+{% else %}
+<div class="card">
+    <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+            <thead>
+                <tr>
+                    <th>Review</th>
+                    <th>Sync Log</th>
+                    <th>Status</th>
+                    <th>Counts</th>
+                    <th>Created</th>
+                    <th>Reviewed</th>
+                    <th class="text-end">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for review in reviews %}
+                    <tr>
+                        <td class="fw-semibold">Review #{{ review.pk }}</td>
+                        <td>
+                            <a href="{{ review.sync_log.get_absolute_url }}">Sync #{{ review.sync_log_id }}</a>
+                            <div class="text-muted small">Clearing the review keeps this log.</div>
+                        </td>
+                        <td>
+                            {% if review.status == "pending" %}
+                                <span class="badge text-bg-warning">Pending</span>
+                            {% elif review.status == "approved" %}
+                                <span class="badge text-bg-success">Approved</span>
+                            {% elif review.status == "partially_approved" %}
+                                <span class="badge text-bg-info">Partially Approved</span>
+                            {% elif review.status == "rejected" %}
+                                <span class="badge text-bg-danger">Rejected</span>
+                            {% elif review.status == "applied" %}
+                                <span class="badge text-bg-primary">Applied</span>
+                            {% else %}
+                                <span class="badge text-bg-secondary">{{ review.status }}</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-muted">
+                            <div>Total: {{ review.items_total }}</div>
+                            <div>Approved: {{ review.items_approved }} | Rejected: {{ review.items_rejected }}</div>
+                        </td>
+                        <td>{{ review.created }}</td>
+                        <td>
+                            {% if review.reviewed %}
+                                <div>{{ review.reviewed }}</div>
+                                <div class="text-muted small">{{ review.reviewed_by|default:"system" }}</div>
+                            {% else %}
+                                <span class="text-muted">Not yet reviewed</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-end">
+                            <a class="btn btn-sm btn-outline-primary" href="{% url 'plugins:netbox_meraki:review_detail' pk=review.pk %}">Open Review</a>
+                        </td>
+                    </tr>
+                {% empty %}
+                    <tr>
+                        <td colspan="7" class="text-center text-muted py-4">No reviews available.</td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const toggle = document.querySelector('[data-check-all]');
+    if (!toggle) {
+        return;
+    }
+    const checkboxes = Array.from(document.querySelectorAll('input[name="review_ids"]'));
+    toggle.addEventListener('change', function () {
+        checkboxes.forEach(function (checkbox) {
+            checkbox.checked = toggle.checked;
+        });
+    });
+});
+</script>
 {% endblock %}

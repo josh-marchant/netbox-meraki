@@ -1,285 +1,153 @@
 {% extends 'netbox_meraki/base.html' %}
 
-{% block page_content %}
-<div class="row">
-    <div class="col-md-12">
-        <h1>Sync from Meraki Dashboard</h1>
+{% block meraki_content %}
+<div class="d-flex justify-content-between align-items-start flex-wrap gap-3 mb-4">
+    <div>
+        <h1 class="mb-1">Queue Sync</h1>
+        <p class="text-muted mb-0">Start a Meraki sync now, choose how changes are handled, and optionally scope the run to a single organization or set of networks.</p>
     </div>
+    <a class="btn btn-outline-secondary" href="{% url 'plugins:netbox_meraki:dashboard' %}">Back To Dashboard</a>
 </div>
 
-<div class="row mt-4">
-    <div class="col-md-8 offset-md-2">
+<div class="row g-4">
+    <div class="col-12 col-xl-8">
         <div class="card">
-            <div class="card-header bg-primary text-white">
-                <strong>Synchronization</strong>
+            <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <div>
+                    <h2 class="h5 mb-0">Sync Request</h2>
+                    <div class="text-muted small mt-1">Each option is on its own line so it is easy to scan before you queue the job.</div>
+                </div>
+                <button class="btn btn-primary btn-sm" type="submit" form="sync-form">Queue Sync Job</button>
             </div>
             <div class="card-body">
-                <p>This will start a synchronization from the Meraki Dashboard API to NetBox.</p>
-                
-                <div class="alert alert-info">
-                    <strong>Note:</strong> Data will be synchronized in the following order to ensure proper dependencies:
-                    <ol>
-                        <li>Sites (from Meraki Networks)</li>
-                        <li>Device Types (Manufacturers & Models)</li>
-                        <li>VLANs</li>
-                        <li>Prefixes/Subnets</li>
-                        <li>Devices</li>
-                        <li>Interfaces</li>
-                        <li>IP Addresses</li>
-                        <li>SSIDs</li>
-                    </ol>
-                </div>
+                <div class="row">
+                    <div class="col-12 col-lg-9 col-xl-8">
+                        <form method="post" id="sync-form">
+                            {% csrf_token %}
 
-                <form method="post" id="syncForm">
-                    {% csrf_token %}
-                    
-                    <div class="mb-4">
-                        <label class="form-label"><strong>Organization</strong></label>
-                        <select class="form-select" name="organization_id" id="organizationSelect">
-                            <option value="">All Organizations</option>
-                            {% for org in organizations %}
-                            <option value="{{ org.id }}">{{ org.name }}</option>
-                            {% endfor %}
-                        </select>
-                        <div id="network-count-badge-sync" style="display: none; margin-top: 8px;">
-                            <span class="badge" style="background-color: #0d6efd; color: #fff; font-weight: 600;">
-                                <i class="mdi mdi-network"></i> <span id="network-count-sync">0</span> Networks
-                            </span>
-                        </div>
-                        <small class="text-muted">Select a specific organization or sync all</small>
-                    </div>
-                    
-                    <div class="mb-4" id="networkSelectContainer" style="display: none;">
-                        <label class="form-label"><strong>Networks</strong></label>
-                        <div class="form-check mb-2">
-                            <input class="form-check-input" type="checkbox" id="syncAllNetworks" name="sync_all_networks" value="true" checked>
-                            <label class="form-check-label" for="syncAllNetworks">
-                                Sync all networks in organization
-                            </label>
-                        </div>
-                        <div id="networkListContainer" style="display: none;">
-                            <div class="border rounded p-3" style="max-height: 300px; overflow-y: auto;">
-                                <div id="networkList" class="mb-0">
-                                    <div class="text-muted text-center py-3">
-                                        <span class="spinner-border spinner-border-sm me-2" role="status"></span>
-                                        Loading networks...
-                                    </div>
+                            {% if form.non_field_errors %}
+                            <div class="alert alert-danger">
+                                {{ form.non_field_errors }}
+                            </div>
+                            {% endif %}
+
+                            <div class="mb-4">
+                                <label class="form-label" for="{{ form.sync_mode.id_for_label }}">{{ form.sync_mode.label }}</label>
+                                {{ form.sync_mode }}
+                                <div class="form-text">Choose <strong>Auto</strong> to apply changes immediately, <strong>Review</strong> to stage them for approval, or <strong>Dry Run</strong> to preview changes without applying them.</div>
+                                {% if form.sync_mode.errors %}<div class="text-danger mt-1">{{ form.sync_mode.errors }}</div>{% endif %}
+                            </div>
+
+                            <div class="mb-4">
+                                <label class="form-label" for="{{ form.organization_id.id_for_label }}">{{ form.organization_id.label }}</label>
+                                {{ form.organization_id }}
+                                <div class="form-text">Leave this set to all organizations to process everything the configured Meraki API key can access.</div>
+                                {% if form.organization_id.errors %}<div class="text-danger mt-1">{{ form.organization_id.errors }}</div>{% endif %}
+                            </div>
+
+                            <div class="mb-4">
+                                <div class="form-check">
+                                    {{ form.sync_all_networks }}
+                                    <label class="form-check-label" for="{{ form.sync_all_networks.id_for_label }}">{{ form.sync_all_networks.label }}</label>
                                 </div>
+                                <div class="form-text">Keep this enabled to include every network in the selected organization. Turn it off to choose specific networks below.</div>
+                                {% if form.sync_all_networks.errors %}<div class="text-danger mt-1">{{ form.sync_all_networks.errors }}</div>{% endif %}
                             </div>
-                            <div id="selected-network-count" style="display: none; margin-top: 8px;">
-                                <span class="badge" style="background-color: #198754; color: #fff; font-weight: 600;">
-                                    <i class="mdi mdi-checkbox-marked-circle"></i> <span id="selected-count">0</span> selected
-                                </span>
+
+                            {{ form.network_ids }}
+
+                            <div class="mb-0">
+                                <label class="form-label">Networks</label>
+                                <div class="form-text mb-2">This list appears after you select an organization. Checked networks will be included when “sync all networks” is turned off.</div>
+                                <div id="network-list" class="border rounded p-3 bg-body-tertiary"></div>
                             </div>
-                            <small class="text-muted">Select specific networks to sync</small>
-                        </div>
+                        </form>
                     </div>
-                    
-                    <div class="mb-4">
-                        <label class="form-label"><strong>Sync Mode</strong></label>
-                        
-                        <div class="form-check">
-                            <input class="form-check-input" type="radio" name="sync_mode" id="mode_auto" value="auto" checked>
-                            <label class="form-check-label" for="mode_auto">
-                                <strong>Auto Sync</strong>
-                                <p class="text-muted small mb-0">All changes will be applied immediately to NetBox without review.</p>
-                            </label>
-                        </div>
-                        
-                        <div class="form-check mt-2">
-                            <input class="form-check-input" type="radio" name="sync_mode" id="mode_review" value="review">
-                            <label class="form-check-label" for="mode_review">
-                                <strong>Sync with Review</strong>
-                                <p class="text-muted small mb-0">Changes will be staged for review. You can approve or reject individual items before applying.</p>
-                            </label>
-                        </div>
-                        
-                        <div class="form-check mt-2">
-                            <input class="form-check-input" type="radio" name="sync_mode" id="mode_dry_run" value="dry_run">
-                            <label class="form-check-label" for="mode_dry_run">
-                                <strong>Dry Run</strong>
-                                <p class="text-muted small mb-0">Preview all changes without applying anything. Useful for testing.</p>
-                            </label>
-                        </div>
-                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 
-                    <div class="alert alert-warning">
-                        <strong>Warning:</strong> This operation may take several minutes depending on the size of your Meraki deployment.
-                    </div>
-
-                    <div class="d-grid gap-2">
-                        <button type="submit" class="btn btn-primary btn-lg">
-                            <i class="mdi mdi-sync"></i> Start Synchronization
-                        </button>
-                        <a href="{% url 'plugins:netbox_meraki:dashboard' %}" class="btn btn-secondary">
-                            Cancel
-                        </a>
-                    </div>
-                </form>
+    <div class="col-12 col-xl-4">
+        <div class="card">
+            <div class="card-header">
+                <h2 class="h5 mb-0">What To Expect</h2>
+            </div>
+            <div class="card-body">
+                <div class="border rounded p-3 mb-3">
+                    <div class="fw-semibold">Auto Sync</div>
+                    <div class="text-muted small mt-1">Changes are applied directly to NetBox as the sync runs.</div>
+                </div>
+                <div class="border rounded p-3 mb-3">
+                    <div class="fw-semibold">Sync With Review</div>
+                    <div class="text-muted small mt-1">Potential changes are staged for approval before anything is applied.</div>
+                </div>
+                <div class="border rounded p-3">
+                    <div class="fw-semibold">Dry Run</div>
+                    <div class="text-muted small mt-1">The plugin calculates what would change and records the review data, but it does not apply those changes.</div>
+                </div>
             </div>
         </div>
     </div>
 </div>
 
 <script>
-document.addEventListener('DOMContentLoaded', function() {
-    const orgSelect = document.getElementById('organizationSelect');
-    const networkContainer = document.getElementById('networkSelectContainer');
-    const networkListContainer = document.getElementById('networkListContainer');
-    const networkList = document.getElementById('networkList');
-    const syncAllCheckbox = document.getElementById('syncAllNetworks');
-    const form = document.getElementById('syncForm');
-    const networkCountBadge = document.getElementById('network-count-badge-sync');
-    const networkCountSpan = document.getElementById('network-count-sync');
-    
-    // Handle organization selection
-    orgSelect.addEventListener('change', function() {
-        const orgId = this.value;
-        
-        if (orgId) {
-            // Show network selection
-            networkContainer.style.display = 'block';
-            loadNetworks(orgId);
-            fetchNetworkCount(orgId);
-        } else {
-            // Hide network selection for "All Organizations"
-            networkContainer.style.display = 'none';
-            networkList.innerHTML = '';
-            networkCountBadge.style.display = 'none';
-        }
-    });
-    
-    // Fetch network count for organization
-    function fetchNetworkCount(orgId) {
-        networkCountSpan.textContent = '...';
-        networkCountBadge.style.display = 'block';
-        
-        fetch(`/plugins/meraki/api/organizations/`)
-            .then(response => response.json())
-            .then(data => {
-                const org = data.organizations.find(o => o.id === orgId);
-                if (org) {
-                    networkCountSpan.textContent = org.network_count || 0;
-                }
-            })
-            .catch(error => {
-                console.error('Error fetching network count:', error);
-                networkCountBadge.style.display = 'none';
-            });
-    }
-    
-    // Handle sync all networks checkbox
-    syncAllCheckbox.addEventListener('change', function() {
-        if (this.checked) {
-            networkListContainer.style.display = 'none';
-        } else {
-            networkListContainer.style.display = 'block';
-        }
-    });
-    
-    // Update selected network count
-    function updateSelectedCount() {
-        const checkboxes = networkList.querySelectorAll('input[name="network_ids[]"]:checked');
-        const count = checkboxes.length;
-        const countBadge = document.getElementById('selected-network-count');
-        const countSpan = document.getElementById('selected-count');
-        
-        if (count > 0 && countBadge && countSpan) {
-            countSpan.textContent = count;
-            countBadge.style.display = 'block';
-        } else if (countBadge) {
-            countBadge.style.display = 'none';
+(function () {
+    const organizationSelect = document.getElementById('organization_id');
+    const syncAll = document.getElementById('sync_all_networks');
+    const networkList = document.getElementById('network-list');
+
+    function clearNetworks(message) {
+        networkList.replaceChildren();
+        if (message) {
+            const text = document.createElement('p');
+            text.className = 'text-muted mb-0';
+            text.textContent = message;
+            networkList.appendChild(text);
         }
     }
-    
-    // Load networks for selected organization
-    function loadNetworks(orgId) {
-        networkList.innerHTML = `
-            <div class="text-muted text-center py-3">
-                <span class="spinner-border spinner-border-sm me-2" role="status"></span>
-                Loading networks...
-            </div>
-        `;
-        
-        fetch(`/plugins/meraki/api/networks/${orgId}/`)
-            .then(response => response.json())
-            .then(data => {
-                if (data.error) {
-                    networkList.innerHTML = `
-                        <div class="alert alert-danger mb-0">
-                            <strong>Error:</strong> ${data.error}
-                        </div>
-                    `;
-                    return;
-                }
-                
-                const networks = data.networks || [];
-                
-                if (networks.length === 0) {
-                    networkList.innerHTML = `
-                        <div class="text-muted text-center py-3">
-                            No networks found in this organization
-                        </div>
-                    `;
-                    return;
-                }
-                
-                // Build network checkboxes
-                let html = '';
-                networks.forEach(network => {
-                    const productTypes = network.productTypes ? network.productTypes.join(', ') : 'Unknown';
-                    const tags = network.tags && network.tags.length > 0 
-                        ? `<span class="badge bg-secondary ms-2">${network.tags.join(', ')}</span>`
-                        : '';
-                    
-                    html += `
-                        <div class="form-check">
-                            <input class="form-check-input network-checkbox" type="checkbox" 
-                                   name="network_ids" value="${network.id}" id="net_${network.id}">
-                            <label class="form-check-label" for="net_${network.id}">
-                                <strong>${network.name}</strong>
-                                <small class="text-muted ms-2">(${productTypes})</small>
-                                ${tags}
-                            </label>
-                        </div>
-                    `;
-                });
-                
-                networkList.innerHTML = html;
-                
-                // Add change listeners to all checkboxes
-                const checkboxes = networkList.querySelectorAll('.network-checkbox');
-                checkboxes.forEach(checkbox => {
-                    checkbox.addEventListener('change', updateSelectedCount);
-                });
-            })
-            .catch(error => {
-                console.error('Error loading networks:', error);
-                networkList.innerHTML = `
-                    <div class="alert alert-danger mb-0">
-                        <strong>Error:</strong> Failed to load networks. Please try again.
-                    </div>
-                `;
-            });
-    }
-    
-    // Form validation
-    form.addEventListener('submit', function(e) {
-        const orgId = orgSelect.value;
-        const syncAll = syncAllCheckbox.checked;
-        
-        if (orgId && !syncAll) {
-            // Check if any networks are selected
-            const selectedNetworks = document.querySelectorAll('.network-checkbox:checked');
-            if (selectedNetworks.length === 0) {
-                e.preventDefault();
-                alert('Please select at least one network or enable "Sync all networks"');
-                return false;
-            }
+
+    function renderNetworks(networks) {
+        clearNetworks('');
+        if (!networks.length) {
+            clearNetworks('No networks available for this organization.');
+            return;
         }
-        
-        return true;
+        networks.forEach((network) => {
+            const wrapper = document.createElement('div');
+            wrapper.className = 'form-check';
+            const input = document.createElement('input');
+            input.type = 'checkbox';
+            input.name = 'network_ids';
+            input.value = String(network.id);
+            input.className = 'form-check-input';
+            input.disabled = syncAll.checked;
+            const label = document.createElement('label');
+            label.className = 'form-check-label';
+            label.textContent = network.name || String(network.id);
+            wrapper.appendChild(input);
+            wrapper.appendChild(label);
+            networkList.appendChild(wrapper);
+        });
+    }
+
+    async function loadNetworks() {
+        if (!organizationSelect.value) {
+            clearNetworks('Select an organization to choose specific networks.');
+            return;
+        }
+        const response = await fetch(`{% url 'plugins:netbox_meraki:get_networks' org_id='ORG_ID' %}`.replace('ORG_ID', organizationSelect.value));
+        const payload = await response.json();
+        renderNetworks(payload.networks || []);
+    }
+
+    organizationSelect.addEventListener('change', loadNetworks);
+    syncAll.addEventListener('change', () => {
+        networkList.querySelectorAll('input[type="checkbox"]').forEach((checkbox) => {
+            checkbox.disabled = syncAll.checked;
+        });
     });
-});
+    clearNetworks('Select an organization to choose specific networks.');
+})();
 </script>
 {% endblock %}

@@ -1,196 +1,164 @@
-"""
-Meraki API Client for interacting with Cisco Meraki Dashboard API
-"""
-import requests
+"""Meraki API client for the hardened NetBox Meraki plugin."""
+
 import logging
 import time
-from typing import List, Dict, Optional
-from django.conf import settings
+from urllib.parse import urljoin, urlparse
 
+import requests
 
-logger = logging.getLogger('netbox_meraki')
+logger = logging.getLogger("netbox_meraki")
 
 
 class MerakiAPIClient:
-    """Client for Cisco Meraki Dashboard API"""
-    
-    def __init__(self, api_key: Optional[str] = None, base_url: Optional[str] = None):
-        """
-        Initialize Meraki API client
-        
-        Args:
-            api_key: Meraki Dashboard API key
-            base_url: Meraki API base URL
-        """
-        plugin_config = settings.PLUGINS_CONFIG.get('netbox_meraki', {})
-        
-        self.api_key = api_key or plugin_config.get('meraki_api_key', '')
-        self.base_url = base_url or plugin_config.get('meraki_base_url', 'https://api.meraki.com/api/v1')
-        
+    DEFAULT_TIMEOUT = 30
+    DEFAULT_PER_PAGE = 1000
+    ALLOWED_HOST_SUFFIXES = (".meraki.com", ".meraki.cn")
+
+    def __init__(self, api_key=None, base_url=None):
+        if api_key is None or base_url is None:
+            plugin_settings = __import__("netbox_meraki.models", fromlist=["PluginSettings"]).PluginSettings.get_settings()
+        else:
+            plugin_settings = None
+
+        self.api_key = api_key if api_key is not None else plugin_settings.get_meraki_api_key()
+        self.base_url = self.validate_base_url(
+            base_url if base_url is not None else plugin_settings.meraki_base_url
+        )
+        self.timeout = self.DEFAULT_TIMEOUT
+
         if not self.api_key:
             raise ValueError("Meraki API key is required")
-        
+
         self.session = requests.Session()
-        self.session.headers.update({
-            'X-Cisco-Meraki-API-Key': self.api_key,
-            'Content-Type': 'application/json'
-        })
-        
-        # Rate limiting settings
-        self.last_request_time = 0
-        self.min_request_interval = 0.2  # 200ms = 5 requests/second (Meraki limit is 10/sec)
-    
+        self.session.headers.update(
+            {
+                "X-Cisco-Meraki-API-Key": self.api_key,
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+            }
+        )
+
+        self.last_request_time = 0.0
+        self.min_request_interval = self._build_rate_limit_interval()
+
+    def _build_rate_limit_interval(self):
+        try:
+            plugin_settings = __import__("netbox_meraki.models", fromlist=["PluginSettings"]).PluginSettings.get_settings()
+            if not plugin_settings.enable_api_throttling:
+                return 0.0
+            return 1.0 / max(1, plugin_settings.api_requests_per_second)
+        except Exception:
+            return 0.2
+
+    @classmethod
+    def validate_base_url(cls, base_url):
+        parsed = urlparse(base_url)
+        host = (parsed.hostname or "").lower()
+        if parsed.scheme != "https":
+            raise ValueError("Meraki API base URL must use HTTPS")
+        if host != "api.meraki.com" and not host.endswith(cls.ALLOWED_HOST_SUFFIXES):
+            raise ValueError("Meraki API base URL must point to a Meraki-hosted API domain")
+        return base_url.rstrip("/")
+
     def _rate_limit(self):
-        """Enforce rate limiting between API requests"""
+        if self.min_request_interval <= 0:
+            return
         current_time = time.time()
-        time_since_last_request = current_time - self.last_request_time
-        
-        if time_since_last_request < self.min_request_interval:
-            sleep_time = self.min_request_interval - time_since_last_request
-            time.sleep(sleep_time)
-        
+        elapsed = current_time - self.last_request_time
+        if elapsed < self.min_request_interval:
+            time.sleep(self.min_request_interval - elapsed)
         self.last_request_time = time.time()
-    
-    def _request(self, method: str, endpoint: str, **kwargs) -> Dict:
-        """
-        Make API request to Meraki Dashboard
-        
-        Args:
-            method: HTTP method
-            endpoint: API endpoint
-            **kwargs: Additional request arguments
-            
-        Returns:
-            Response JSON data
-        """
-        # Apply rate limiting
-        self._rate_limit()
-        
-        url = f"{self.base_url}/{endpoint.lstrip('/')}"
-        
+
+    def _extract_next_link(self, response):
+        link_header = response.headers.get("Link", "")
+        for part in link_header.split(","):
+            if 'rel="next"' not in part:
+                continue
+            if "<" in part and ">" in part:
+                return part[part.index("<") + 1 : part.index(">")]
+        return None
+
+    def _request(self, method, url, params=None):
         max_retries = 3
-        retry_delay = 5  # seconds
-        
         for attempt in range(max_retries):
             try:
-                response = self.session.request(method, url, **kwargs)
-                
-                # Handle rate limiting (429 Too Many Requests)
+                self._rate_limit()
+                response = self.session.request(method, url, params=params or None, timeout=self.timeout)
                 if response.status_code == 429:
-                    retry_after = int(response.headers.get('Retry-After', retry_delay))
-                    logger.warning(f"Rate limited by Meraki API. Waiting {retry_after} seconds...")
+                    retry_after = int(response.headers.get("Retry-After", "5"))
+                    logger.warning("Meraki API rate limited; retrying in %s seconds", retry_after)
                     time.sleep(retry_after)
                     continue
-                
                 response.raise_for_status()
-                return response.json() if response.content else {}
-                
-            except requests.exceptions.RequestException as e:
-                if attempt < max_retries - 1:
-                    logger.warning(f"Meraki API request failed (attempt {attempt + 1}/{max_retries}): {e}")
-                    time.sleep(retry_delay)
-                else:
-                    logger.error(f"Meraki API request failed after {max_retries} attempts: {e}")
+                data = response.json() if response.content else {}
+                return response, data
+            except requests.exceptions.RequestException:
+                if attempt >= max_retries - 1:
                     raise
-        
-        return {}
-    
-    def get_organizations(self) -> List[Dict]:
-        """Get all organizations"""
-        return self._request('GET', 'organizations')
-    
-    def get_organization(self, org_id: str) -> Dict:
-        """Get organization details"""
-        return self._request('GET', f'organizations/{org_id}')
-    
-    def get_networks(self, org_id: str) -> List[Dict]:
-        """Get all networks in an organization"""
-        return self._request('GET', f'organizations/{org_id}/networks')
-    
-    def get_network(self, network_id: str) -> Dict:
-        """Get network details"""
-        return self._request('GET', f'networks/{network_id}')
-    
-    def get_devices(self, network_id: str) -> List[Dict]:
-        """Get all devices in a network"""
-        return self._request('GET', f'networks/{network_id}/devices')
-    
-    def get_device(self, serial: str) -> Dict:
-        """Get device details"""
-        return self._request('GET', f'devices/{serial}')
-    
-    def get_device_statuses(self, org_id: str) -> List[Dict]:
-        """Get device statuses for an organization"""
-        return self._request('GET', f'organizations/{org_id}/devices/statuses')
-    
-    def get_appliance_vlans(self, network_id: str) -> List[Dict]:
-        """Get VLANs configured on MX appliance"""
+                time.sleep(2)
+        raise RuntimeError("Meraki request retry loop exhausted")
+
+    def _request_json(self, method, endpoint, params=None):
+        url = endpoint if endpoint.startswith("http") else urljoin(f"{self.base_url}/", endpoint.lstrip("/"))
+        return self._request(method, url, dict(params or {}))[1]
+
+    def _request_paginated_list(self, method, endpoint, params=None):
+        url = endpoint if endpoint.startswith("http") else urljoin(f"{self.base_url}/", endpoint.lstrip("/"))
+        request_params = dict(params or {})
+        request_params.setdefault("perPage", self.DEFAULT_PER_PAGE)
+        aggregated = []
+
+        while url:
+            response, data = self._request(method, url, request_params)
+            if not isinstance(data, list):
+                return data
+            aggregated.extend(data)
+            next_link = self._extract_next_link(response)
+            if not next_link:
+                return aggregated
+            url = urljoin(f"{self.base_url}/", next_link)
+            request_params = None
+
+        return aggregated
+
+    def get_organizations(self):
+        return self._request_paginated_list("GET", "organizations")
+
+    def get_networks(self, organization_id):
+        return self._request_paginated_list("GET", f"organizations/{organization_id}/networks")
+
+    def get_inventory_devices(self, organization_id):
+        return self._request_paginated_list("GET", f"organizations/{organization_id}/inventory/devices")
+
+    def get_device_availabilities(self, organization_id):
+        return self._request_paginated_list("GET", f"organizations/{organization_id}/devices/availabilities")
+
+    def get_device(self, serial):
+        return self._request_json("GET", f"devices/{serial}")
+
+    def get_wireless_ssids(self, network_id):
         try:
-            return self._request('GET', f'networks/{network_id}/appliance/vlans')
-        except requests.exceptions.HTTPError as e:
-            if e.response.status_code == 404:
-                # VLANs not enabled on this network
+            return self._request_json("GET", f"networks/{network_id}/wireless/ssids")
+        except requests.exceptions.HTTPError as exc:
+            if exc.response is not None and exc.response.status_code in (400, 404):
                 return []
             raise
-    
-    def get_appliance_ports(self, network_id: str) -> List[Dict]:
-        """Get appliance port configuration"""
+
+    def get_wireless_ssid(self, network_id, number):
+        return self._request_json("GET", f"networks/{network_id}/wireless/ssids/{number}")
+
+    def get_switch_ports(self, serial):
         try:
-            return self._request('GET', f'networks/{network_id}/appliance/ports')
-        except requests.exceptions.HTTPError as e:
-            if e.response.status_code == 404:
+            return self._request_json("GET", f"devices/{serial}/switch/ports")
+        except requests.exceptions.HTTPError as exc:
+            if exc.response is not None and exc.response.status_code == 404:
                 return []
             raise
-    
-    def get_switch_ports(self, serial: str) -> List[Dict]:
-        """Get switch port configuration"""
+
+    def get_appliance_vlans(self, network_id):
         try:
-            return self._request('GET', f'devices/{serial}/switch/ports')
-        except requests.exceptions.HTTPError as e:
-            if e.response.status_code == 404:
+            return self._request_json("GET", f"networks/{network_id}/appliance/vlans")
+        except requests.exceptions.HTTPError as exc:
+            if exc.response is not None and exc.response.status_code in (400, 404):
                 return []
-            raise
-    
-    def get_appliance_subnets(self, network_id: str) -> List[Dict]:
-        """Get subnets/prefixes from appliance VLANs"""
-        vlans = self.get_appliance_vlans(network_id)
-        subnets = []
-        
-        for vlan in vlans:
-            if vlan.get('subnet'):
-                subnets.append({
-                    'vlan_id': vlan.get('id'),
-                    'vlan_name': vlan.get('name'),
-                    'subnet': vlan.get('subnet'),
-                    'appliance_ip': vlan.get('applianceIp'),
-                })
-        
-        return subnets
-    
-    def get_organization_inventory(self, org_id: str) -> List[Dict]:
-        """Get organization inventory devices"""
-        return self._request('GET', f'organizations/{org_id}/inventoryDevices')
-    
-    def get_wireless_ssids(self, network_id: str) -> List[Dict]:
-        """Get wireless SSIDs for a network"""
-        try:
-            return self._request('GET', f'networks/{network_id}/wireless/ssids')
-        except requests.exceptions.HTTPError as e:
-            if e.response.status_code in [400, 404]:
-                # Network doesn't have wireless or isn't configured
-                return []
-            raise
-    
-    def get_network_firmware_upgrades(self, network_id: str) -> Dict:
-        """Get firmware upgrade information for a network
-        
-        Returns detailed firmware info including exact version in shortName field
-        Example: {"currentVersion": {"shortName": "MX 18.107.4", "firmware": "wired-18-1-07"}}
-        """
-        try:
-            return self._request('GET', f'networks/{network_id}/firmwareUpgrades')
-        except requests.exceptions.HTTPError as e:
-            if e.response.status_code in [400, 404]:
-                # Network doesn't support firmware upgrades API or not configured
-                return {}
             raise
