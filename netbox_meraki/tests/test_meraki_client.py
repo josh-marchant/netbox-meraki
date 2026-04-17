@@ -90,6 +90,22 @@ class MerakiAPIClientTests(TestCase):
         self.assertIsNone(request_mock.call_args.kwargs["params"])
 
     @patch("netbox_meraki.meraki_client.requests.Session.request")
+    def test_cellular_gateway_lan_request_has_no_pagination_params(self, request_mock):
+        request_mock.return_value = MockResponse({"deviceLanIp": "192.0.2.10"}, headers={})
+        client = MerakiAPIClient()
+        payload = client.get_device_cellular_gateway_lan("Q2XX-1234")
+        self.assertEqual(payload, {"deviceLanIp": "192.0.2.10"})
+        self.assertIsNone(request_mock.call_args.kwargs["params"])
+
+    @patch("netbox_meraki.meraki_client.requests.Session.request")
+    def test_management_interface_request_has_no_pagination_params(self, request_mock):
+        request_mock.return_value = MockResponse({"wan1": {"staticIp": "192.0.2.10"}}, headers={})
+        client = MerakiAPIClient()
+        payload = client.get_device_management_interface("Q2XX-1234")
+        self.assertEqual(payload, {"wan1": {"staticIp": "192.0.2.10"}})
+        self.assertIsNone(request_mock.call_args.kwargs["params"])
+
+    @patch("netbox_meraki.meraki_client.requests.Session.request")
     def test_wireless_ssid_detail_request_has_no_pagination_params(self, request_mock):
         request_mock.return_value = MockResponse({"number": 3, "defaultVlanId": 20}, headers={})
         client = MerakiAPIClient()

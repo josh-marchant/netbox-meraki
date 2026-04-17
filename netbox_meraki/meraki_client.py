@@ -136,6 +136,12 @@ class MerakiAPIClient:
     def get_device(self, serial):
         return self._request_json("GET", f"devices/{serial}")
 
+    def get_device_cellular_gateway_lan(self, serial):
+        return self._request_json("GET", f"devices/{serial}/cellularGateway/lan")
+
+    def get_device_management_interface(self, serial):
+        return self._request_json("GET", f"devices/{serial}/managementInterface")
+
     def get_wireless_ssids(self, network_id):
         try:
             return self._request_json("GET", f"networks/{network_id}/wireless/ssids")

@@ -5,7 +5,7 @@ class MerakiConfig(PluginConfig):
     name = 'netbox_meraki'
     verbose_name = 'NetBox Meraki Sync'
     description = 'Maintained Meraki synchronization fork for NetBox 4.4.x-4.5.x'
-    version = '2.0.0'
+    version = '2.0.1'
     author = 'Tarani Debnath'
     base_url = 'meraki'
     min_version = '4.4.0'

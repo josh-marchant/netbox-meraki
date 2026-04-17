@@ -2,7 +2,7 @@ import logging
 import re
 import time
 from dataclasses import dataclass
-from ipaddress import ip_interface
+from ipaddress import ip_interface, ip_network
 
 from django.contrib.contenttypes.models import ContentType
 
@@ -169,7 +169,8 @@ class MerakiSyncService:
             site_name = self.settings.transform_name(site_name, self.settings.site_name_transform)
             site_data = {"name": site_name, "slug": slugify_value(site_name, f"site-{network_id.lower()}"), "description": network_name, "meraki_network_id": network_id}
             self._stage("site", network_id, site_name, site_data, self._find_site(network_id, site_name), {"meraki_organization_id": org_id, "meraki_network_id": network_id})
-            for vlan_data in self.client.get_appliance_vlans(network_id):
+            network_vlans = self.client.get_appliance_vlans(network_id)
+            for vlan_data in network_vlans:
                 vlan_id = str(vlan_data.get("id") or "")
                 if not vlan_id:
                     continue
@@ -222,6 +223,7 @@ class MerakiSyncService:
                 payload.update(availability.get(serial, {}))
                 payload["organizationId"] = org_id
                 payload["networkId"] = network_id
+                payload["networkVlans"] = network_vlans
                 self._sync_device(site_name, payload)
             network_product_types = {str(product_type).lower() for product_type in (network.get("productTypes") or []) if product_type}
             if not network_product_types or network_product_types.intersection(SSID_CAPABLE_PRODUCT_TYPES):
@@ -255,6 +257,7 @@ class MerakiSyncService:
             "mac": payload.get("mac") or "",
             "meraki_network_id": str(payload.get("networkId") or ""),
             "firmware": payload.get("firmware") or "",
+            "management_context": self._build_management_context(payload),
         }
         device = self._stage("device", serial, name, data, self._find_device(serial), {"meraki_organization_id": str(payload.get("organizationId") or ""), "meraki_network_id": str(payload.get("networkId") or ""), "meraki_serial": serial})
         if device and self.sync_mode == "auto" and self._supports_switch_ports(product_type):
@@ -269,6 +272,54 @@ class MerakiSyncService:
             except Exception as exc:
                 logger.exception("Failed to sync switch ports for device %s", serial)
                 self._record_sync_error(f"Failed to sync switch ports for device '{name}': {exc}")
+
+    def _build_management_context(self, payload):
+        context = {
+            "network_vlans": payload.get("networkVlans") or [],
+            "direct_subnet": "",
+            "direct_ip": "",
+            "direct_source": "",
+        }
+        serial = str(payload.get("serial") or "")
+        lan_ip = str(payload.get("lanIp") or "").strip()
+        if not serial or not lan_ip:
+            return context
+
+        product_type = str(payload.get("productType") or payload.get("productTypeName") or "").strip().lower()
+        if product_type in {"mg", "cellulargateway"}:
+            try:
+                lan_payload = self.client.get_device_cellular_gateway_lan(serial) or {}
+            except Exception as exc:
+                logger.debug("Unable to fetch MG LAN settings for %s: %s", serial, exc)
+            else:
+                direct_ip = str(lan_payload.get("deviceLanIp") or "").strip()
+                if direct_ip == lan_ip:
+                    context["direct_ip"] = direct_ip
+                    context["direct_subnet"] = str(lan_payload.get("deviceSubnet") or "").strip()
+                    context["direct_source"] = "cellular gateway LAN settings"
+
+        if not context["direct_subnet"]:
+            try:
+                management_payload = self.client.get_device_management_interface(serial) or {}
+            except Exception as exc:
+                logger.debug("Unable to fetch management interface settings for %s: %s", serial, exc)
+            else:
+                static_subnet = self._extract_management_interface_subnet(management_payload, lan_ip)
+                if static_subnet:
+                    context["direct_ip"] = lan_ip
+                    context["direct_subnet"] = static_subnet
+                    context["direct_source"] = "management interface settings"
+
+        return context
+
+    def _extract_management_interface_subnet(self, management_payload, lan_ip):
+        for interface_name in ("wan1", "wan2"):
+            interface_data = management_payload.get(interface_name) or {}
+            static_ip = str(interface_data.get("staticIp") or "").strip()
+            static_mask = str(interface_data.get("staticSubnetMask") or "").strip()
+            if static_ip == lan_ip and static_ip and static_mask:
+                return f"{static_ip}/{static_mask}"
+        return None
 
     def _stage(self, item_type, identifier, object_name, data, current, binding_kwargs):
         conflict_message = self._detect_conflict(item_type, identifier, data, current)
@@ -368,7 +419,13 @@ class MerakiSyncService:
             obj.custom_field_data.update({"meraki_network_id": data.get("meraki_network_id", ""), "meraki_firmware_version": data.get("firmware", "")})
             obj.save()
             self._tag(obj, "device")
-            self._ensure_management(obj, data.get("lan_ip"), data.get("mac"), data.get("firmware"))
+            self._ensure_management(
+                obj,
+                data.get("lan_ip"),
+                data.get("mac"),
+                data.get("firmware"),
+                data.get("management_context"),
+            )
         elif item_type == "ssid":
             site = Site.objects.get(name=data["site"])
             obj = self._find_ssid(identifier, data["site"], data["ssid"]) or WirelessLAN(ssid=data["ssid"])
@@ -426,6 +483,10 @@ class MerakiSyncService:
         self.errors.append(message)
         if self.sync_log:
             self.sync_log.add_progress_log(message, level="error")
+
+    def _record_sync_warning(self, message):
+        if self.sync_log:
+            self.sync_log.add_progress_log(message, level="warning")
 
     def _binding_for_object(self, obj):
         if obj is None or getattr(obj, "pk", None) is None:
@@ -694,12 +755,12 @@ class MerakiSyncService:
             )
         return None
 
-    def _ensure_management(self, device, lan_ip, mac, firmware):
+    def _ensure_management(self, device, lan_ip, mac, firmware, management_context=None):
         if not lan_ip and not mac:
             return
         interface = self._ensure_management_interface(device, firmware)
         self._reconcile_management_mac(device, interface, mac)
-        self._reconcile_management_ip(device, interface, lan_ip)
+        self._reconcile_management_ip(device, interface, lan_ip, management_context)
 
     def _get_device_role(self, role_name, device_name):
         role = DeviceRole.objects.filter(name=role_name).first()
@@ -821,7 +882,7 @@ class MerakiSyncService:
             return f"{assigned_object._meta.verbose_name} '{assigned_object.name}'"
         return str(assigned_object)
 
-    def _normalize_management_address(self, lan_ip):
+    def _normalize_management_address(self, lan_ip, management_context=None):
         raw_value = str(lan_ip or "").strip()
         if not raw_value:
             return None
@@ -833,7 +894,55 @@ class MerakiSyncService:
         if parsed.version != 4:
             self._record_sync_error(f"Management IP skipped due to conflict: '{raw_value}' is not an IPv4 address.")
             return None
-        return f"{parsed.ip}/32"
+        normalized_address, resolution_source = self._resolve_management_address(parsed, management_context)
+        if resolution_source:
+            self._log_progress(
+                f"Management IP subnet resolved for {parsed.ip} using {resolution_source}: {normalized_address}"
+            )
+        return normalized_address
+
+    def _resolve_management_address(self, parsed_ip, management_context=None):
+        host_ip = parsed_ip.ip
+        context = management_context or {}
+
+        direct_subnet = str(context.get("direct_subnet") or "").strip()
+        direct_ip = str(context.get("direct_ip") or "").strip()
+        if direct_subnet and direct_ip == str(host_ip):
+            normalized = self._normalize_management_candidate(host_ip, direct_subnet)
+            if normalized:
+                return normalized, context.get("direct_source") or "Meraki management subnet data"
+
+        for vlan_data in context.get("network_vlans") or []:
+            appliance_ip = str(vlan_data.get("applianceIp") or "").strip()
+            subnet = str(vlan_data.get("subnet") or "").strip()
+            if appliance_ip == str(host_ip) and subnet:
+                normalized = self._normalize_management_candidate(host_ip, subnet)
+                if normalized:
+                    return normalized, "matching appliance VLAN"
+
+        if parsed_ip.network.prefixlen != 32:
+            return f"{host_ip}/{parsed_ip.network.prefixlen}", None
+        return f"{host_ip}/32", None
+
+    def _normalize_management_candidate(self, host_ip, subnet):
+        raw_subnet = str(subnet or "").strip()
+        if not raw_subnet:
+            return None
+        try:
+            network = ip_network(raw_subnet, strict=False)
+        except ValueError:
+            self._record_sync_error(
+                f"Management IP mask derivation skipped: '{raw_subnet}' is not a valid IPv4 subnet."
+            )
+            return None
+        if network.version != 4:
+            return None
+        if host_ip not in network:
+            self._record_sync_error(
+                f"Management IP mask derivation skipped: host {host_ip} is not inside subnet {raw_subnet}."
+            )
+            return None
+        return f"{host_ip}/{network.prefixlen}"
 
     def _reconcile_management_mac(self, device, interface, mac):
         mac_value = str(mac or "").strip()
@@ -880,8 +989,8 @@ class MerakiSyncService:
             interface.save(update_fields=["primary_mac_address"])
         self._log_progress(f"Management MAC {action} for device '{device.name}': {mac_value}")
 
-    def _reconcile_management_ip(self, device, interface, lan_ip):
-        normalized_address = self._normalize_management_address(lan_ip)
+    def _reconcile_management_ip(self, device, interface, lan_ip, management_context=None):
+        normalized_address = self._normalize_management_address(lan_ip, management_context)
         if not normalized_address:
             return
 
@@ -937,7 +1046,7 @@ class MerakiSyncService:
         else:
             same_host_conflict = self._global_same_host_conflict(IPAddress, normalized_address, host_address)
             if same_host_conflict:
-                self._record_sync_error(
+                self._record_sync_warning(
                     f"Management IP skipped due to conflict for device '{device.name}': host {host_address} "
                     f"already exists globally as {same_host_conflict}."
                 )
