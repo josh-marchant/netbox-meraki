@@ -4,7 +4,7 @@ from netbox.plugins import PluginConfig
 class MerakiConfig(PluginConfig):
     name = 'netbox_meraki'
     verbose_name = 'NetBox Meraki Sync'
-    description = 'Secure internal Meraki synchronization plugin for NetBox 4.4.x'
+    description = 'Maintained Meraki synchronization fork for NetBox 4.4.x-4.5.x'
     version = '2.0.0'
     author = 'Tarani Debnath'
     base_url = 'meraki'

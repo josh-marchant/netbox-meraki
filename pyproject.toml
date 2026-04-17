@@ -1,7 +1,7 @@
 [project]
 name = "netbox-meraki"
 version = "2.0.0"
-description = "Secure NetBox 4.4.x plugin for synchronizing Cisco Meraki inventory"
+description = "Maintained NetBox 4.4.x-4.5.x fork for synchronizing Cisco Meraki inventory"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
@@ -27,10 +27,10 @@ classifiers = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/tkdebnath/netbox-meraki"
-Repository = "https://github.com/tkdebnath/netbox-meraki"
-Issues = "https://github.com/tkdebnath/netbox-meraki/issues"
-Changelog = "https://github.com/tkdebnath/netbox-meraki/blob/main/CHANGELOG.md"
+Homepage = "https://github.com/josh-marchant/netbox-meraki"
+Repository = "https://github.com/josh-marchant/netbox-meraki"
+Issues = "https://github.com/josh-marchant/netbox-meraki/issues"
+Changelog = "https://github.com/josh-marchant/netbox-meraki/blob/master/CHANGELOG.md"
 
 [build-system]
 requires = ["setuptools>=61.0", "wheel"]
