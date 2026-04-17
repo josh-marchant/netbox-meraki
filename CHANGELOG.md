@@ -2,6 +2,17 @@
 
 All notable changes to the NetBox Meraki Sync Plugin.
 
+## [2.0.1] - 2026-04-17
+
+### Changed
+- Improved management IPv4 synchronization so the plugin now derives the most accurate mask Meraki can prove instead of always storing `lanIp` as `/32`
+- Reused synced MX appliance VLAN data to map management IPs to matching VLAN subnets where `applianceIp` matches the device `lanIp`
+- Added targeted Meraki lookups for cellular gateway LAN settings and device management interface settings to resolve management IP masks when those endpoints expose subnet information
+- Preserved `/32` as the fallback only when the Meraki API does not provide a reliable subnet source for the device management IP
+
+### Added
+- Unit coverage for management IP mask derivation from matching appliance VLAN data, MG LAN settings, management interface settings, and `/32` fallback behavior
+
 ## [2.0.0] - 2026-04-16
 
 ### Added
